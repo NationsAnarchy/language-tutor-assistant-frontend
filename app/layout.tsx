@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Toaster } from 'sonner'
 import { AuthSessionProvider } from '@/lib/auth-provider'
 import { ErrorBoundary } from '@/components/error-boundary'
+import { TabDetectorProvider } from '@/lib/tab-detector-provider'
 import './globals.css'
 
 // Google Fonts loaded at runtime via <link> — avoids Turbopack build-time download
@@ -49,7 +50,9 @@ export default function RootLayout({
       <body className="antialiased font-sans">
         <ErrorBoundary>
           <AuthSessionProvider>
-            {children}
+            <TabDetectorProvider>
+              {children}
+            </TabDetectorProvider>
             {process.env.NODE_ENV === 'production' && <Analytics />}
           </AuthSessionProvider>
         </ErrorBoundary>
