@@ -486,7 +486,7 @@ export function ChatScreen({
       >
         {/* Empty state */}
         {isEmpty && (
-          <div className="flex flex-col items-center justify-center h-full gap-6 py-12 text-center">
+          <div className="flex flex-col items-center justify-center min-h-full gap-6 py-8 sm:py-12 text-center">
             <div className="size-14 rounded-2xl bg-primary/10 flex items-center justify-center">
               <Sparkles className="size-7 text-primary" aria-hidden="true" />
             </div>
