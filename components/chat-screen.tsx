@@ -477,68 +477,70 @@ export function ChatScreen({
         </div>
       </div>
 
-      {/* Message list */}
-      <main
-        className="flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-5"
-        aria-label="Conversation"
-        aria-live="polite"
-        aria-atomic="false"
-      >
-        {/* Empty state */}
-        {isEmpty && (
-          <div className="flex flex-col items-center justify-center min-h-full gap-6 py-8 sm:py-12 text-center">
-            <div className="size-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <Sparkles className="size-7 text-primary" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="font-bold text-foreground text-base">Ready to practice!</p>
-              <p className="text-sm text-muted-foreground mt-1.5 max-w-xs leading-relaxed text-pretty">
-                {language === 'korean'
-                  ? '한국어로 말씀해 보세요. 틀려도 괜찮아요 — 함께 고쳐 나가겠습니다.'
-                  : language === 'japanese'
-                    ? '日本語で話してみてください。間違えても大丈夫です。'
-                    : 'Say anything to get started — mistakes are welcome, your tutor will help.'}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2 justify-center max-w-sm" aria-label="Suggested starters">
-              {STARTER_PROMPTS[language].map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => sendMessage(prompt)}
-                  disabled={isLoading}
-                  className="px-3.5 py-2 rounded-xl border border-border bg-card text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-accent transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shadow-xs"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
+      {/* Empty state — separate from scrollable message area to avoid any overflow */}
+      {isEmpty ? (
+        <main
+          className="flex-1 flex flex-col items-center justify-center px-4 gap-6 text-center"
+          aria-label="Conversation"
+        >
+          <div className="size-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <Sparkles className="size-7 text-primary" aria-hidden="true" />
           </div>
-        )}
-
-        {/* Messages */}
-        {messages.map((msg) => (
-          <div key={msg.id}>
-            <ChatBubble
-              message={msg}
-              isAudioLoading={audioLoadingId === msg.id}
-              audioFailureHint={audioFailures.get(msg.id)}
-            />
-            {messageErrors.has(msg.id) && (
-              <ChatBubbleError
-                message={messageErrors.get(msg.id)!.message}
-                onRetry={messageErrors.get(msg.id)!.retryable ? () => handleRetry(msg.id) : undefined}
-                onDismiss={() => handleDismissError(msg.id)}
+          <div>
+            <p className="font-bold text-foreground text-base">Ready to practice!</p>
+            <p className="text-sm text-muted-foreground mt-1.5 max-w-xs leading-relaxed text-pretty">
+              {language === 'korean'
+                ? '한국어로 말씀해 보세요. 틀려도 괜찮아요 — 함께 고쳐 나가겠습니다.'
+                : language === 'japanese'
+                  ? '日本語で話してみてください。間違えても大丈夫です。'
+                  : 'Say anything to get started — mistakes are welcome, your tutor will help.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 justify-center max-w-sm" aria-label="Suggested starters">
+            {STARTER_PROMPTS[language].map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => sendMessage(prompt)}
+                disabled={isLoading}
+                className="px-3.5 py-2 rounded-xl border border-border bg-card text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-accent transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shadow-xs"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </main>
+      ) : (
+        <main
+          className="flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-5"
+          aria-label="Conversation"
+          aria-live="polite"
+          aria-atomic="false"
+        >
+          {/* Messages */}
+          {messages.map((msg) => (
+            <div key={msg.id}>
+              <ChatBubble
+                message={msg}
+                isAudioLoading={audioLoadingId === msg.id}
+                audioFailureHint={audioFailures.get(msg.id)}
               />
-            )}
-          </div>
-        ))}
+              {messageErrors.has(msg.id) && (
+                <ChatBubbleError
+                  message={messageErrors.get(msg.id)!.message}
+                  onRetry={messageErrors.get(msg.id)!.retryable ? () => handleRetry(msg.id) : undefined}
+                  onDismiss={() => handleDismissError(msg.id)}
+                />
+              )}
+            </div>
+          ))}
 
-        {/* Typing indicator */}
-        {isLoading && <TypingIndicator />}
+          {/* Typing indicator */}
+          {isLoading && <TypingIndicator />}
 
-        <div ref={messagesEndRef} />
-      </main>
+          <div ref={messagesEndRef} />
+        </main>
+      )}
 
       {/* Exercise panel (mode-dependent) */}
       {mode === 'exercise' && (
