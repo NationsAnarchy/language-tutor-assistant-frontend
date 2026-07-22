@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { ArrowRight, RefreshCcw, CheckCircle2, LogOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getFlagSvgUrl } from '@/lib/twemoji'
 import { Button } from '@/components/ui/button'
 import {
   type Language,
@@ -64,7 +65,12 @@ function LanguageCard({
 
       {/* Flag */}
       <span className="text-4xl leading-none" role="img" aria-label={`${language} flag`}>
-        {flag}
+        <img
+          src={getFlagSvgUrl(flag)}
+          alt=""
+          className="inline-block size-[1em] align-text-bottom"
+          draggable={false}
+        />
       </span>
 
       {/* Language names */}
@@ -77,9 +83,6 @@ function LanguageCard({
         >
           {nativeLabel}
         </span>
-        {nativeLabel !== language && (
-          <span className="text-xs text-muted-foreground">{language}</span>
-        )}
       </div>
 
       {/* Selection indicator */}
