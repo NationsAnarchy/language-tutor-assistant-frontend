@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Menu, X, Plus, MessageCircle, Globe, Pencil, Trash2, Check, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getFlagSvgUrl } from '@/lib/twemoji'
 import { renameSession, deleteSession } from '@/lib/api'
 import { toast } from '@/lib/toast'
 import type { Language, Level, Session, User } from '@/lib/types'
@@ -270,7 +271,14 @@ export function SessionSidebar({
             return (
               <div key={lang}>
                 <div className="flex items-center gap-1.5 px-1 mb-1.5">
-                  <span className="text-sm" aria-hidden="true">{meta.flag}</span>
+                  <span className="text-sm leading-none" aria-hidden="true">
+                    <img
+                      src={getFlagSvgUrl(meta.flag)}
+                      alt=""
+                      className="inline-block size-[1em] align-text-bottom"
+                      draggable={false}
+                    />
+                  </span>
                   <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                     {meta.nativeLabel}
                   </span>

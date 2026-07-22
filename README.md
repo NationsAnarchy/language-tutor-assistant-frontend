@@ -45,7 +45,7 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 | Screen | Description |
 |--------|-------------|
 | **Login** | OAuth sign-in with Google (or GitHub). Double-click prevention via `usePreventDoubleClick` hook |
-| **Language & Level Picker** | Choose language (English/한국어/日本語) and level (Beginner/Intermediate/Advanced). Shows existing sessions as "Continue" with "Start a fresh session instead" option |
+| **Language & Level Picker** | Choose language (English/한국어/日本語) and level (Beginner/Intermediate/Advanced). Shows existing sessions as "Continue" with "Start a fresh session instead" option. Flags rendered via twemoji SVG for cross-platform consistency |
 | **Chat Screen** | Primary interface — chat bubbles with markdown rendering (including tables), typing indicator, audio playback with speed toggle, correction highlighting, error retry |
 | **Exercise Panel** | Structured exercises with prompt card (markdown), answer input, and submission feedback. Inline error display for generation failures |
 
@@ -78,6 +78,7 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 | `lib/auth-provider.tsx` | NextAuth session provider |
 | `lib/toast.ts` | Typed toast helpers wrapping sonner |
 | `lib/types.ts` | TypeScript types for messages, languages, levels |
+| `lib/twemoji.ts` | Maps flag emojis to twemoji CDN SVG URLs for consistent cross-platform rendering (fixes missing flags on stripped-down Windows / Linux builds) |
 | `lib/use-theme.ts` | Dark/light mode theme hook |
 | `lib/utils.ts` | Utility functions (cn class merging) |
 
@@ -170,6 +171,7 @@ frontend/
 │   ├── auth-provider.tsx        # NextAuth session provider
 │   ├── tab-detector-provider.tsx # Multi-tab detection provider
 │   ├── toast.ts                 # Typed toast helpers (sonner wrapper)
+│   ├── twemoji.ts               # Flag emoji → twemoji SVG URL mapping (cross-platform rendering)
 │   ├── types.ts                 # TypeScript types
 │   ├── use-multi-tab-detector.ts # BroadcastChannel multi-tab hook
 │   ├── use-prevent-double-click.ts # Double-click prevention hook
@@ -193,6 +195,7 @@ frontend/
 | Styling | Tailwind CSS v4 + shadcn/ui |
 | Markdown | react-markdown + remark-gfm (table support) |
 | Icons | lucide-react |
+| Emoji Flags | twemoji (Twitter Emoji) SVG via CDN |
 | Toasts | sonner |
 
 ## Deployment (Vercel)

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Globe, LogOut, ChevronDown, Moon, Sun, Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getFlagSvgUrl } from '@/lib/twemoji'
 import { useTheme } from '@/lib/use-theme'
 import type { Language, Level, User } from '@/lib/types'
 import { LANGUAGES } from '@/lib/types'
@@ -105,7 +106,14 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
           aria-label={`Currently studying ${langMeta?.label}, ${levelLabel} level`}
         >
           <span className="text-sm leading-none shrink-0" role="img" aria-label={`${langMeta?.label} flag`}>
-            {langMeta?.flag}
+            {langMeta?.flag && (
+              <img
+                src={getFlagSvgUrl(langMeta.flag)}
+                alt=""
+                className="inline-block size-[1em] align-text-bottom"
+                draggable={false}
+              />
+            )}
           </span>
           <span className="text-sm font-semibold text-foreground truncate">{langMeta?.nativeLabel}</span>
           <span className="text-muted-foreground/60 text-sm shrink-0" aria-hidden="true">·</span>
