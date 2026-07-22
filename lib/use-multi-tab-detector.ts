@@ -1,24 +1,28 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { toast } from 'sonner'
+import { useEffect, useRef, useState, useCallback } from 'react'
 
 const CHANNEL_NAME = 'linguaai-tab-sync'
 
+type TabState = 'single' | 'multiple' | 'elected'
+
 /**
- * Detects when the app is open in multiple browser tabs and shows a warning.
- * Uses the BroadcastChannel API — no polling, no localStorage hacks.
+ * Detects when the app is open in multiple browser tabs.
+ * Returns the current tab state and a function to "elect" this tab as the
+ * active one (which pushes other tabs back to 'multiple' state).
  *
- * Wire this into your root layout or a provider component:
- * ```tsx
- * function Provider({ children }) {
- *   useMultiTabDetector()
- *   return children
- * }
- * ```
+ * Uses the BroadcastChannel API — no polling, no localStorage hacks.
  */
 export function useMultiTabDetector() {
+  const [tabState, setTabState] = useState<TabState>('single')
   const channelRef = useRef<BroadcastChannel | null>(null)
+  const tabIdRef = useRef(Math.random().toString(36).slice(2, 9))
+
+  /** Elect this tab as the active one. */
+  const electThisTab = useCallback(() => {
+    setTabState('elected')
+    channelRef.current?.postMessage({ type: 'elected', from: tabIdRef.current })
+  }, [])
 
   useEffect(() => {
     // Not available in SSR / older browsers — silently skip
@@ -27,22 +31,29 @@ export function useMultiTabDetector() {
     const channel = new BroadcastChannel(CHANNEL_NAME)
     channelRef.current = channel
 
-    // Track the number of connected tabs
+    // How many tabs are currently open (including this one)
     let tabCount = 1
 
-    // When another tab opens, it sends 'tab-opened'
     channel.onmessage = (event: MessageEvent) => {
-      if (event.data === 'tab-opened') {
+      const data = event.data
+
+      if (typeof data === 'string' && data === 'tab-opened') {
         tabCount++
-        if (tabCount === 2) {
-          toast.warning('App open in another tab', {
-            description: 'Signing in on one tab may not reflect on the other.',
-            duration: 5000,
-          })
+        if (tabCount >= 2) {
+          setTabState('multiple')
         }
       }
-      if (event.data === 'tab-closed') {
+
+      if (typeof data === 'string' && data === 'tab-closed') {
         tabCount = Math.max(1, tabCount - 1)
+        if (tabCount < 2) {
+          setTabState('single')
+        }
+      }
+
+      // Another tab was elected — this tab becomes the "other" one
+      if (data?.type === 'elected' && data.from !== tabIdRef.current) {
+        setTabState('multiple')
       }
     }
 
@@ -62,4 +73,6 @@ export function useMultiTabDetector() {
       channelRef.current = null
     }
   }, [])
+
+  return { tabState, electThisTab }
 }
