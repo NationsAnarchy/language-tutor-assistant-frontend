@@ -1,7 +1,23 @@
 'use client'
 
 // In development, the frontend talks directly to the backend.
+// In production (Vercel), we use a same-origin Next.js API proxy to avoid CORS.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+
+/** Returns true when running on Vercel (any non-localhost deployment). */
+function useProxy(): boolean {
+  return typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+}
+
+/** Resolve the correct base URL for a backend API path.
+ *  On Vercel, use the same-origin proxy route (/api/proxy/...).
+ *  Locally, use the direct backend URL. */
+function resolveURL(path: string): string {
+  if (useProxy()) {
+    return `/api/proxy${path}`
+  }
+  return `${BACKEND_URL}${path}`
+}
 
 // Map frontend language codes to backend language codes
 const LANG_TO_BACKEND: Record<string, string> = {
@@ -330,7 +346,7 @@ export async function createSession(language: string, level: string): Promise<Cr
   const backendLang = LANG_TO_BACKEND[language] || language
   let res: Response
   try {
-    res = await fetch(`${BACKEND_URL}/session`, {
+    res = await fetch(resolveURL('/session'), {
       method: 'POST',
       headers: await getHeaders(),
       body: JSON.stringify({ language: backendLang, level }),
@@ -363,7 +379,7 @@ export async function getSession(sessionId: string): Promise<SessionWithHistory>
 
   let res: Response
   try {
-    res = await fetch(`${BACKEND_URL}/session/${sessionId}`, {
+    res = await fetch(resolveURL(`/session/${sessionId}`), {
       headers: await getHeaders(),
     })
   } catch (err) {
@@ -384,7 +400,7 @@ export async function listSessions(): Promise<BackendSession[]> {
 
   let res: Response
   try {
-    res = await fetch(`${BACKEND_URL}/sessions`, {
+    res = await fetch(resolveURL('/sessions'), {
       headers: await getHeaders(),
     })
   } catch (err) {
@@ -402,7 +418,7 @@ export async function listSessions(): Promise<BackendSession[]> {
  *  Use for background refreshes — returns the fresh data without throwing. */
 export async function refreshSessionInBackground(sessionId: string): Promise<SessionWithHistory | null> {
   try {
-    const res = await fetch(`${BACKEND_URL}/session/${sessionId}`, {
+    const res = await fetch(resolveURL(`/session/${sessionId}`), {
       headers: await getHeaders(),
     })
     if (!res.ok) return null
@@ -423,7 +439,7 @@ export interface ChatResult {
 export async function sendChat(sessionId: string, message: string, signal?: AbortSignal): Promise<ChatResult> {
   let res: Response
   try {
-    res = await fetch(`${BACKEND_URL}/chat`, {
+    res = await fetch(resolveURL('/chat'), {
       method: 'POST',
       headers: await getHeaders(),
       body: JSON.stringify({ session_id: sessionId, message }),
@@ -441,7 +457,7 @@ export async function sendChat(sessionId: string, message: string, signal?: Abor
 export async function renameSession(sessionId: string, title: string): Promise<boolean> {
   let res: Response
   try {
-    res = await fetch(`${BACKEND_URL}/session/${sessionId}`, {
+    res = await fetch(resolveURL(`/session/${sessionId}`), {
       method: 'PATCH',
       headers: await getHeaders(),
       body: JSON.stringify({ title }),
@@ -460,7 +476,7 @@ export async function renameSession(sessionId: string, title: string): Promise<b
 export async function deleteSession(sessionId: string): Promise<boolean> {
   let res: Response
   try {
-    res = await fetch(`${BACKEND_URL}/session/${sessionId}`, {
+    res = await fetch(resolveURL(`/session/${sessionId}`), {
       method: 'DELETE',
       headers: await getHeaders(),
     })
@@ -478,7 +494,7 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
 export async function synthesizeAudio(sessionId: string, signal?: AbortSignal): Promise<string | null> {
   let res: Response
   try {
-    res = await fetch(`${BACKEND_URL}/session/${sessionId}/tts`, {
+    res = await fetch(resolveURL(`/session/${sessionId}/tts`), {
       method: 'POST',
       headers: await getHeaders(),
       signal,
@@ -496,6 +512,9 @@ export async function synthesizeAudio(sessionId: string, signal?: AbortSignal): 
 
 export function audioUrl(filename: string | null): string | null {
   if (!filename) return null
+  if (useProxy()) {
+    return `/api/proxy/audio/${filename}`
+  }
   return `${BACKEND_URL}/audio/${filename}`
 }
 
