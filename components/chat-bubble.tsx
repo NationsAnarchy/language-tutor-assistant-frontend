@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { AudioPlayButton } from './audio-play-button'
 import { Spinner } from './ui/spinner'
 import type { Message, CorrectionSegment } from '@/lib/types'
@@ -53,6 +54,26 @@ const markdownComponents = {
   ),
   a: ({ children, ...props }: React.ComponentPropsWithoutRef<'a'>) => (
     <a className="underline underline-offset-2 hover:opacity-80" target="_blank" rel="noopener noreferrer" {...props}>{children}</a>
+  ),
+  table: ({ children, ...props }: React.ComponentPropsWithoutRef<'table'>) => (
+    <div className="overflow-x-auto mb-2 last:mb-0">
+      <table className="w-full text-xs border-collapse border border-border rounded-lg" {...props}>{children}</table>
+    </div>
+  ),
+  thead: ({ children, ...props }: React.ComponentPropsWithoutRef<'thead'>) => (
+    <thead className="bg-muted/60" {...props}>{children}</thead>
+  ),
+  tbody: ({ children, ...props }: React.ComponentPropsWithoutRef<'tbody'>) => (
+    <tbody {...props}>{children}</tbody>
+  ),
+  tr: ({ children, ...props }: React.ComponentPropsWithoutRef<'tr'>) => (
+    <tr className="border-b border-border last:border-b-0" {...props}>{children}</tr>
+  ),
+  th: ({ children, ...props }: React.ComponentPropsWithoutRef<'th'>) => (
+    <th className="px-3 py-2 text-left font-semibold text-foreground border-r border-border last:border-r-0" {...props}>{children}</th>
+  ),
+  td: ({ children, ...props }: React.ComponentPropsWithoutRef<'td'>) => (
+    <td className="px-3 py-2 text-left text-foreground/90 border-r border-border last:border-r-0" {...props}>{children}</td>
   ),
 }
 
@@ -136,7 +157,7 @@ export function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBu
       <div className="flex justify-end" role="article" aria-label="Your message">
         <div className="max-w-[78%] sm:max-w-[65%]">
           <div className="px-4 py-3 rounded-2xl rounded-br-sm bg-primary text-primary-foreground text-sm leading-relaxed shadow-sm markdown-user">
-            <ReactMarkdown components={markdownComponents}>
+            <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
               {message.content}
             </ReactMarkdown>
           </div>
@@ -188,7 +209,7 @@ export function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBu
             </div>
           ) : (
             <div className="text-foreground markdown-agent">
-              <ReactMarkdown components={markdownComponents}>
+              <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
                 {message.content}
               </ReactMarkdown>
             </div>

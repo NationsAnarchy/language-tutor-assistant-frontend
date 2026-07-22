@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { RefreshCcw, Send, BookOpen, Loader2, AlertCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
 import { AudioPlayButton } from './audio-play-button'
 import type { Language } from '@/lib/types'
@@ -98,7 +99,20 @@ export function ExercisePanel({
           aria-label="Exercise prompt"
         >
           <div className="flex-1 min-w-0 text-sm text-foreground leading-relaxed">
-            <ReactMarkdown>{currentExercise.prompt}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+              table: ({ children, ...props }) => (
+                <div className="overflow-x-auto mb-2 last:mb-0">
+                  <table className="w-full text-xs border-collapse border border-border rounded-lg" {...props}>{children}</table>
+                </div>
+              ),
+              thead: ({ children, ...props }) => <thead className="bg-muted/60" {...props}>{children}</thead>,
+              tbody: ({ children, ...props }) => <tbody {...props}>{children}</tbody>,
+              tr: ({ children, ...props }) => <tr className="border-b border-border last:border-b-0" {...props}>{children}</tr>,
+              th: ({ children, ...props }) => <th className="px-3 py-2 text-left font-semibold text-foreground border-r border-border last:border-r-0" {...props}>{children}</th>,
+              td: ({ children, ...props }) => <td className="px-3 py-2 text-left text-foreground/90 border-r border-border last:border-r-0" {...props}>{children}</td>,
+            }}>
+              {currentExercise.prompt}
+            </ReactMarkdown>
           </div>
           {currentExercise.audioUrl && (
             <AudioPlayButton
