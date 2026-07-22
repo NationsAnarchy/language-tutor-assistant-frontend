@@ -248,6 +248,8 @@ function ChatPageInner() {
           onSwitchLanguage={handleSwitchLanguage}
           onSignOut={handleSignOut}
           onLoadingChange={setIsAgentLoading}
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          sidebarOpen={sidebarOpen}
         />
       </div>
     </div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Globe, LogOut, ChevronDown, Moon, Sun } from 'lucide-react'
+import { Globe, LogOut, ChevronDown, Moon, Sun, Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/lib/use-theme'
 import type { Language, Level, User } from '@/lib/types'
@@ -14,6 +14,10 @@ interface TopBarProps {
   onSwitchLanguage: () => void
   onSignOut: () => void
   disabled?: boolean
+  /** Callback to toggle the session sidebar on mobile/tablet. */
+  onToggleSidebar?: () => void
+  /** Whether the sidebar is currently open (for aria-expanded). */
+  sidebarOpen?: boolean
 }
 
 function UserAvatar({ user }: { user: User }) {
@@ -39,7 +43,7 @@ function UserAvatar({ user }: { user: User }) {
   )
 }
 
-export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, disabled }: TopBarProps) {
+export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, disabled, onToggleSidebar, sidebarOpen }: TopBarProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const { theme, toggle: toggleTheme } = useTheme()
@@ -109,9 +113,22 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
         </div>
       </div>
 
-      {/* Right: switch language + user menu */}
+      {/* Right: sidebar toggle (mobile) + switch language + user menu */}
       <div className="flex items-center gap-1.5">
-        {/* Theme toggle */}
+        {/* Sidebar hamburger — visible only on mobile/tablet */}
+        {onToggleSidebar && (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className="lg:hidden flex items-center justify-center size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+            aria-expanded={sidebarOpen}
+          >
+            <Menu className="size-4" aria-hidden="true" />
+          </button>
+        )}
+
+        {/* Theme toggle — desktop only */}
         <button
           type="button"
           onClick={toggleTheme}
@@ -125,6 +142,7 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
           )}
         </button>
 
+        {/* Switch language — desktop only */}
         <button
           type="button"
           onClick={onSwitchLanguage}
@@ -157,11 +175,11 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
             />
           </button>
 
-          {/* Dropdown */}
+          {/* Dropdown — includes mobile-only controls */}
           {menuOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-full mt-1.5 w-52 rounded-xl border border-border bg-popover shadow-lg py-1 z-30 animate-in fade-in-0 zoom-in-95 slide-in-from-top-1 duration-150"
+              className="absolute right-0 top-full mt-1.5 w-56 rounded-xl border border-border bg-popover shadow-lg py-1 z-30 animate-in fade-in-0 zoom-in-95 slide-in-from-top-1 duration-150"
             >
               {/* User info */}
               <div className="px-3 py-2.5 border-b border-border mb-1">
@@ -173,6 +191,33 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
                   </div>
                 </div>
               </div>
+
+              {/* Mobile-only: Switch language */}
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => { setMenuOpen(false); onSwitchLanguage() }}
+                disabled={disabled}
+                className="sm:hidden w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors disabled:opacity-40"
+              >
+                <Globe className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                Switch language
+              </button>
+
+              {/* Mobile-only: Theme toggle */}
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => { setMenuOpen(false); toggleTheme() }}
+                className="sm:hidden w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+              >
+                {theme === 'dark' ? (
+                  <Sun className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                ) : (
+                  <Moon className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                )}
+                {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+              </button>
 
               {/* Sign out */}
               <button

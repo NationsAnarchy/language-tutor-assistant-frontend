@@ -47,6 +47,10 @@ interface ChatScreenProps {
   onSwitchLanguage: () => void
   onSignOut: () => void
   onLoadingChange?: (loading: boolean) => void
+  /** Callback to toggle the session sidebar on mobile. */
+  onToggleSidebar?: () => void
+  /** Whether the sidebar is currently open. */
+  sidebarOpen?: boolean
 }
 
 export function ChatScreen({
@@ -58,6 +62,8 @@ export function ChatScreen({
   onSwitchLanguage,
   onSignOut,
   onLoadingChange,
+  onToggleSidebar,
+  sidebarOpen,
 }: ChatScreenProps) {
   const router = useRouter()
   const [messages, setMessages] = useState<Message[]>(initialMessages)
@@ -421,6 +427,8 @@ export function ChatScreen({
         onSwitchLanguage={onSwitchLanguage}
         onSignOut={onSignOut}
         disabled={isLoading}
+        onToggleSidebar={onToggleSidebar}
+        sidebarOpen={sidebarOpen}
       />
 
       {/* Mode toggle tabs */}
