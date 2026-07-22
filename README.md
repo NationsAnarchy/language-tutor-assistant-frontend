@@ -110,12 +110,16 @@ Backend (Railway) → TTS generates MP3 → /audio/{path} → Frontend proxy →
 
 ### Multi-Tab Detection
 
-Uses the `BroadcastChannel` API (Chrome 54+, Firefox 38+, Safari 15.4+):
+Uses a **heartbeat protocol** over the `BroadcastChannel` API (Chrome 54+, Firefox 38+, Safari 15.4+):
 
-1. When a second tab opens, both tabs show a full-screen overlay
-2. User clicks "Use this tab" on the one they want to keep
-3. The elected tab dismisses the overlay; the other tab stays blocked
-4. The user closes the blocked tab
+- Every tab broadcasts its unique ID every 800ms
+- Each tab maintains a `Set<string>` of all active IDs it has heard from
+- If no heartbeat from an ID within 2500ms, it's automatically removed (handles tab crashes gracefully)
+- When ≥1 other tab is detected, a full-screen overlay blocks the app content
+- User clicks **"Use this tab"** to elect the current tab as the active one
+- The elected tab dismisses the overlay; other tabs stay blocked and ask the user to close them
+
+This is more reliable than a simple counter — it correctly handles 3+ tabs, rapid open/close, and tab crashes without getting stuck.
 
 ### Error Handling
 
