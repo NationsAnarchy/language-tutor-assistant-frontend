@@ -3,6 +3,7 @@
 import { signIn } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { LinguaLogo } from './lingua-logo'
+import { usePreventDoubleClick } from '@/lib/use-prevent-double-click'
 
 function GoogleIcon() {
   return (
@@ -36,6 +37,7 @@ function GitHubIcon() {
 }
 
 export function LoginScreen() {
+  const handleGoogleSignIn = usePreventDoubleClick(() => signIn('google'))
   return (
     <main className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
       {/* Subtle background grid pattern */}
@@ -93,7 +95,7 @@ export function LoginScreen() {
             variant="outline"
             size="lg"
             className="w-full gap-3 font-medium h-12 text-sm border-border hover:border-primary/40 hover:bg-accent transition-all"
-            onClick={() => signIn('google')}
+            onClick={handleGoogleSignIn}
           >
             <GoogleIcon />
             Sign in with Google

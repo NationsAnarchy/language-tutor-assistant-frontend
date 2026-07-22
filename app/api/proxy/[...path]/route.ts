@@ -2,28 +2,59 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
-export async function GET(
+/** Paths that return binary data (not JSON). */
+const BINARY_PREFIXES = ['/audio/']
+
+function isBinary(pathname: string): boolean {
+  return BINARY_PREFIXES.some((p) => pathname.startsWith(p))
+}
+
+/** Proxy a request to the backend, preserving the response body type. */
+async function proxyRequest(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
+  pathname: string,
+  method: string,
+  body?: string | null,
 ) {
-  const { path } = await params
-  const pathname = '/' + path.join('/')
   const search = request.nextUrl.search
   const url = `${BACKEND_URL}${pathname}${search}`
 
-  // Forward the Authorization header if present
+  // Forward headers needed by the backend
   const headers = new Headers()
   const auth = request.headers.get('authorization')
   if (auth) headers.set('authorization', auth)
-  headers.set('content-type', 'application/json')
+
+  const binary = isBinary(pathname)
+  if (!binary) {
+    headers.set('content-type', 'application/json')
+  }
 
   try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers,
-    })
-    const body = await res.text()
-    return new NextResponse(body, {
+    const fetchInit: RequestInit = { method, headers }
+    if (body !== undefined && body !== null) {
+      fetchInit.body = body
+    }
+    const res = await fetch(url, fetchInit)
+
+    // For binary responses, use ArrayBuffer to avoid text corruption
+    if (binary) {
+      const arrayBuffer = await res.arrayBuffer()
+      const contentType = res.headers.get('content-type') || 'audio/mpeg'
+      return new NextResponse(arrayBuffer, {
+        status: res.status,
+        statusText: res.statusText,
+        headers: {
+          'content-type': contentType,
+          'content-length': res.headers.get('content-length') || String(arrayBuffer.byteLength),
+          'accept-ranges': 'bytes',
+          'cache-control': 'public, max-age=86400',
+        },
+      })
+    }
+
+    // JSON responses
+    const text = await res.text()
+    return new NextResponse(text, {
       status: res.status,
       statusText: res.statusText,
       headers: { 'content-type': 'application/json' },
@@ -34,6 +65,15 @@ export async function GET(
       { status: 502 },
     )
   }
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const { path } = await params
+  const pathname = '/' + path.join('/')
+  return proxyRequest(request, pathname, 'GET')
 }
 
 export async function POST(
@@ -42,33 +82,8 @@ export async function POST(
 ) {
   const { path } = await params
   const pathname = '/' + path.join('/')
-  const search = request.nextUrl.search
-  const url = `${BACKEND_URL}${pathname}${search}`
-
-  const headers = new Headers()
-  const auth = request.headers.get('authorization')
-  if (auth) headers.set('authorization', auth)
-  headers.set('content-type', 'application/json')
-
-  try {
-    const body = await request.text()
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body,
-    })
-    const responseBody = await res.text()
-    return new NextResponse(responseBody, {
-      status: res.status,
-      statusText: res.statusText,
-      headers: { 'content-type': 'application/json' },
-    })
-  } catch {
-    return NextResponse.json(
-      { detail: "Can't reach the backend server." },
-      { status: 502 },
-    )
-  }
+  const body = await request.text()
+  return proxyRequest(request, pathname, 'POST', body)
 }
 
 export async function PATCH(
@@ -77,33 +92,8 @@ export async function PATCH(
 ) {
   const { path } = await params
   const pathname = '/' + path.join('/')
-  const search = request.nextUrl.search
-  const url = `${BACKEND_URL}${pathname}${search}`
-
-  const headers = new Headers()
-  const auth = request.headers.get('authorization')
-  if (auth) headers.set('authorization', auth)
-  headers.set('content-type', 'application/json')
-
-  try {
-    const body = await request.text()
-    const res = await fetch(url, {
-      method: 'PATCH',
-      headers,
-      body,
-    })
-    const responseBody = await res.text()
-    return new NextResponse(responseBody, {
-      status: res.status,
-      statusText: res.statusText,
-      headers: { 'content-type': 'application/json' },
-    })
-  } catch {
-    return NextResponse.json(
-      { detail: "Can't reach the backend server." },
-      { status: 502 },
-    )
-  }
+  const body = await request.text()
+  return proxyRequest(request, pathname, 'PATCH', body)
 }
 
 export async function DELETE(
@@ -112,29 +102,5 @@ export async function DELETE(
 ) {
   const { path } = await params
   const pathname = '/' + path.join('/')
-  const search = request.nextUrl.search
-  const url = `${BACKEND_URL}${pathname}${search}`
-
-  const headers = new Headers()
-  const auth = request.headers.get('authorization')
-  if (auth) headers.set('authorization', auth)
-  headers.set('content-type', 'application/json')
-
-  try {
-    const res = await fetch(url, {
-      method: 'DELETE',
-      headers,
-    })
-    const body = await res.text()
-    return new NextResponse(body, {
-      status: res.status,
-      statusText: res.statusText,
-      headers: { 'content-type': 'application/json' },
-    })
-  } catch {
-    return NextResponse.json(
-      { detail: "Can't reach the backend server." },
-      { status: 502 },
-    )
-  }
+  return proxyRequest(request, pathname, 'DELETE')
 }

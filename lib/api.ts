@@ -512,8 +512,11 @@ export async function synthesizeAudio(sessionId: string, signal?: AbortSignal): 
 
 export function audioUrl(filename: string | null): string | null {
   if (!filename) return null
-  // Audio is always fetched directly from the backend (CORS is configured on Railway).
-  // The Next.js proxy reads responses as text and corrupts binary audio data.
+  // On Vercel, route audio through the proxy (same-origin, no CORS).
+  // The proxy now handles binary data correctly using ArrayBuffer.
+  if (useProxy()) {
+    return `/api/proxy/audio/${filename}`
+  }
   return `${BACKEND_URL}/audio/${filename}`
 }
 
