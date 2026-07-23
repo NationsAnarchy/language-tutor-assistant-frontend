@@ -157,11 +157,12 @@ function ChatPageInner() {
     }
   }, []);
 
-  /** Client-side session switch — avoids full page re-mount (Issue #45). */
-  const switchToSession = useCallback(async (targetSessionId: string) => {
-    // Cancel any in-flight agent request from the previous session
-    // Fire a synthetic abort signal through ChatScreen's abortRef
+  /** Ref to skip pushState when handling a popstate event (back/forward). */
+  const isPopStateRef = useRef(false);
 
+  /** Client-side session switch — avoids full page re-mount (Issue #45).
+   *  Uses pushState so browser back/forward navigates through sessions. */
+  const switchToSession = useCallback(async (targetSessionId: string, fromPopState = false) => {
     setSwitchingSession(true);
     switchingRef.current = true;
 
@@ -184,8 +185,11 @@ function ChatPageInner() {
       setLevel(sessionData.level as Level);
       setSessionId(targetSessionId);
 
-      // Silently update the URL for bookmarking without a full navigation
-      router.replace(`/chat?session=${targetSessionId}`, { scroll: false });
+      // Push a new history entry so back/forward works between sessions.
+      // Skip pushState when this is a popstate-triggered switch (back/forward).
+      if (!fromPopState) {
+        window.history.pushState({ sessionId: targetSessionId }, '', `/chat?session=${targetSessionId}`);
+      }
 
       // Background refresh
       refreshSessionInBackground(targetSessionId).catch(() => {});
@@ -199,11 +203,37 @@ function ChatPageInner() {
     }
   }, [router]);
 
+  /** Handle browser back/forward — reload data for the session from history state. */
+  const handlePopState = useCallback((event: PopStateEvent) => {
+    const state = event.state as { sessionId?: string } | null;
+    // Cancel any in-flight agent request
+    audioManager.stopAll();
+    if (state?.sessionId) {
+      switchToSession(state.sessionId, true);
+    } else {
+      // No state means we navigated back to before the first pushState
+      // which is the initial page load — reload from URL params
+      const params = new URLSearchParams(window.location.search);
+      const sid = params.get('session');
+      if (sid) {
+        switchToSession(sid, true);
+      } else {
+        router.push('/language');
+      }
+    }
+  }, [router, switchToSession]);
+
+  // Listen for back/forward navigation
+  useEffect(() => {
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [handlePopState]);
+
   const handleSelectSession = (selectedSessionId: string) => {
     if (selectedSessionId === sessionId || switchingRef.current) return;
     // Stop any playing audio before switching conversations (Issue #42)
     audioManager.stopAll();
-    switchToSession(selectedSessionId);
+    switchToSession(selectedSessionId, false);
   };
 
   const handleNewSession = () => {
