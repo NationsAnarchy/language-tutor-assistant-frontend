@@ -32,6 +32,7 @@ function LanguageCard({
   hasSession,
   sessionLevel,
   onClick,
+  disabled,
 }: {
   language: string
   nativeLabel: string
@@ -40,17 +41,20 @@ function LanguageCard({
   hasSession: boolean
   sessionLevel?: Level
   onClick: () => void
+  disabled?: boolean
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-pressed={selected}
       className={cn(
         'relative flex flex-col items-center justify-center gap-3 rounded-2xl border p-5 text-center transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 group',
         selected
           ? 'border-primary bg-primary/5 shadow-sm ring-2 ring-primary ring-offset-2 ring-offset-background'
-          : 'border-border bg-card hover:border-primary/50 hover:bg-accent hover:shadow-sm'
+          : 'border-border bg-card hover:border-primary/50 hover:bg-accent hover:shadow-sm',
+        disabled && 'opacity-50 pointer-events-none'
       )}
     >
       {/* Existing session badge */}
@@ -96,6 +100,7 @@ function LanguageCard({
 export function LanguagePicker({ user, existingSessions, loading, onStart, onStartFresh, onSignOut }: LanguagePickerProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(null)
   const [selectedLevel, setSelectedLevel] = useState<Level | null>(null)
+  const isDisabled = loading
 
   // Check if ANY session exists for selected language+level (not just the latest)
   // so Continue works across all difficulty levels (Issue #27 follow-up)
@@ -173,6 +178,7 @@ export function LanguagePicker({ user, existingSessions, loading, onStart, onSta
                     hasSession={session?.exists ?? false}
                     sessionLevel={session?.level}
                     onClick={() => handleLanguageSelect(lang.value)}
+                    disabled={isDisabled}
                   />
                 )
               })}
@@ -199,13 +205,15 @@ export function LanguagePicker({ user, existingSessions, loading, onStart, onSta
                     key={lvl.value}
                     type="button"
                     onClick={() => setSelectedLevel(lvl.value)}
+                    disabled={isDisabled}
                     aria-pressed={isSelected}
                     className={cn(
                       'flex-1 flex flex-col items-center gap-1 px-3 py-3.5 text-center transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:z-10 relative',
                       i !== 0 && 'border-l border-border',
                       isSelected
                         ? 'bg-primary text-primary-foreground'
-                        : 'bg-card text-foreground hover:bg-accent'
+                        : 'bg-card text-foreground hover:bg-accent',
+                      isDisabled && 'opacity-50 pointer-events-none'
                     )}
                   >
                     <span className={cn(
@@ -231,7 +239,7 @@ export function LanguagePicker({ user, existingSessions, loading, onStart, onSta
             <Button
               size="lg"
               className="w-full h-12 gap-2 font-semibold text-sm"
-              disabled={!selectedLanguage || !selectedLevel}
+              disabled={!selectedLanguage || !selectedLevel || isDisabled}
               onClick={handleStart}
             >
               {isResume ? (
@@ -255,7 +263,8 @@ export function LanguagePicker({ user, existingSessions, loading, onStart, onSta
                 <button
                   type="button"
                   onClick={() => { if (selectedLanguage && selectedLevel) onStartFresh(selectedLanguage, selectedLevel) }}
-                  className="hover:text-foreground transition-colors underline underline-offset-2 hover:no-underline"
+                  disabled={isDisabled}
+                  className="hover:text-foreground transition-colors underline underline-offset-2 hover:no-underline disabled:opacity-40 disabled:pointer-events-none"
                 >
                   Start a fresh session instead
                 </button>
