@@ -123,11 +123,12 @@ On Vercel, all API calls go through a same-origin proxy at `/api/proxy/[...path]
 Browser → /api/proxy/session → Railway backend
           /api/proxy/chat
           /api/proxy/audio/...
+          /api/proxy/session/{id}/tts
 ```
 
 The proxy handles both response types:
-- **JSON endpoints** (`/session`, `/chat`, `/sessions`, `/tts`) → proxied as text with `application/json`
-- **Binary endpoints** (`/audio/...`) → proxied as `ArrayBuffer` preserving content-type and content-length
+- **JSON endpoints** (`/session`, `/chat`, `/sessions`) → proxied as text with `application/json`
+- **Binary endpoints** (`/audio/...`, `/session/{id}/tts` POST) → proxied as `ArrayBuffer` preserving content-type and content-length
 
 The `resolveURL()` function in `lib/api/index.ts` decides the target:
 - **Locally** (`localhost`) → direct backend URL
@@ -136,10 +137,14 @@ The `resolveURL()` function in `lib/api/index.ts` decides the target:
 ### Audio Pipeline
 
 ```
-Backend (Railway) → TTS generates MP3 → /audio/{path}
-  → Frontend proxy → Audio element (AudioPlayButton)
+Frontend → POST /session/{id}/tts → Backend (Gemini TTS)
+  → Raw WAV bytes in response body
+  → Blob URL (URL.createObjectURL)
+  → Audio element (AudioPlayButton)
     → Play/Pause with seek bar, time display, volume slider, mute, speed control
 ```
+
+Audio is no longer saved to disk on the backend. Instead, the TTS endpoint returns raw WAV bytes directly in the HTTP response body. The `synthesizeAudio()` function in `lib/api/index.ts` creates a blob URL (`URL.createObjectURL(audioBlob)`) that the `AudioPlayButton` component plays with `HTMLAudioElement`. This eliminates disk I/O, removes the ffmpeg dependency, and reduces playback latency (no intermediate file fetch).
 
 The `useAudioPlayer` hook manages all audio lifecycle (creation, event listeners, cleanup). The `AudioManager` singleton tracks all active audio instances globally:
 - **Navigation stops audio**: `audioManager.stopAll()` is called before switching conversations, navigating to language page, or signing out
@@ -157,6 +162,15 @@ Uses a **heartbeat protocol** over the `BroadcastChannel` API (Chrome 54+, Firef
 - The elected tab dismisses the overlay; other tabs stay blocked and ask the user to close them
 
 This is more reliable than a simple counter — it correctly handles 3+ tabs, rapid open/close, and tab crashes without getting stuck.
+
+### Chat → TTS Flow
+
+The frontend separates text and audio into two sequential requests (Issue #13):
+
+1. `POST /chat` → returns text reply immediately (no waiting for TTS)
+2. `POST /session/{id}/tts` → returns raw WAV bytes that the frontend plays as a blob URL (Issue #43)
+
+This means the user sees the tutor's text response instantly, while audio is synthesized and played asynchronously. A loading spinner (🔇) appears next to the message while audio is being generated, and failure hints are shown inline if TTS fails.
 
 ### Error Handling
 

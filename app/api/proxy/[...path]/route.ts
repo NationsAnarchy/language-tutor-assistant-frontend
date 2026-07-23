@@ -2,11 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
-/** Paths that return binary data (not JSON). */
+/** Paths that return binary data (not JSON).
+ *  - /audio/... — static audio file serving (legacy, may still be used)
+ *  - /session/.../tts — POST that now returns raw audio bytes (Issue #43)
+ */
 const BINARY_PREFIXES = ['/audio/']
+const BINARY_POST_PATTERNS = [/^\/session\/[^/]+\/tts$/]
 
-function isBinary(pathname: string): boolean {
-  return BINARY_PREFIXES.some((p) => pathname.startsWith(p))
+function isBinary(pathname: string, method: string): boolean {
+  if (BINARY_PREFIXES.some((p) => pathname.startsWith(p))) return true
+  if (method === 'POST' && BINARY_POST_PATTERNS.some((p) => p.test(pathname))) return true
+  return false
 }
 
 /** Proxy a request to the backend, preserving the response body type. */
@@ -24,7 +30,7 @@ async function proxyRequest(
   const auth = request.headers.get('authorization')
   if (auth) headers.set('authorization', auth)
 
-  const binary = isBinary(pathname)
+  const binary = isBinary(pathname, method)
   if (!binary) {
     headers.set('content-type', 'application/json')
   }
@@ -40,14 +46,19 @@ async function proxyRequest(
     if (binary) {
       const arrayBuffer = await res.arrayBuffer()
       const contentType = res.headers.get('content-type') || 'audio/mpeg'
+      const isStaticAudio = pathname.startsWith('/audio/')
       return new NextResponse(arrayBuffer, {
         status: res.status,
         statusText: res.statusText,
         headers: {
           'content-type': contentType,
           'content-length': res.headers.get('content-length') || String(arrayBuffer.byteLength),
-          'accept-ranges': 'bytes',
-          'cache-control': 'public, max-age=86400',
+          ...(isStaticAudio ? {
+            'accept-ranges': 'bytes',
+            'cache-control': 'public, max-age=86400',
+          } : {
+            'cache-control': 'no-cache',
+          }),
         },
       })
     }

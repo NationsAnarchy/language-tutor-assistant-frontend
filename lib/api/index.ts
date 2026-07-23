@@ -552,6 +552,16 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
   return res.ok
 }
 
+/**
+ * Synthesize speech for the last assistant message and return an object URL
+ * for the audio blob that the frontend can play immediately (Issue #43).
+ *
+ * The backend now returns raw audio bytes (WAV) directly instead of saving
+ * to disk and returning a URL. The frontend creates a blob URL from the
+ * response body and plays it with HTMLAudioElement.
+ *
+ * Returns null if synthesis fails or returns no data.
+ */
 export async function synthesizeAudio(sessionId: string, signal?: AbortSignal): Promise<string | null> {
   let res: Response
   try {
@@ -567,8 +577,11 @@ export async function synthesizeAudio(sessionId: string, signal?: AbortSignal): 
   if (!res.ok) {
     throw await classifyResponseError(res)
   }
-  const data = await res.json()
-  return audioUrl(data.audio_url)
+
+  // The backend now returns raw audio bytes — create a blob URL (Issue #43)
+  const audioBlob = await res.blob()
+  // Revoke any previously created blob URLs for cleanup
+  return URL.createObjectURL(audioBlob)
 }
 
 export function audioUrl(filename: string | null): string | null {
