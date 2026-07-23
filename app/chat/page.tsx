@@ -284,11 +284,11 @@ function ChatPageInner() {
     }
   };
 
-  // Show loading indicator when initially loading or switching between sessions (Issue #44)
-  if (!forceReady && (status === "loading" || loading || switchingSession)) {
+  // Show full-page spinner only on initial load (not during session switches)
+  if (!forceReady && (status === "loading" || loading)) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-background">
-        <Spinner size="lg" label={switchingSession ? "Switching conversation..." : "Loading..."} />
+        <Spinner size="lg" label="Loading..." />
       </main>
     );
   }
@@ -314,6 +314,13 @@ function ChatPageInner() {
 
   return (
     <div className="fixed inset-0 flex bg-background">
+      {/* Subtle loading bar at the very top during session switches (Issue #44) */}
+      {switchingSession && (
+        <div className="fixed top-0 left-0 right-0 z-100 h-0.5 bg-primary/20 overflow-hidden">
+          <div className="h-full w-1/3 bg-primary rounded-full animate-loading-bar" />
+        </div>
+      )}
+
       <SessionSidebar
         sessions={sessions}
         activeSessionId={sessionId}
@@ -325,7 +332,7 @@ function ChatPageInner() {
         onSessionsChanged={refreshSessions}
         onActiveSessionDeleted={handleActiveSessionDeleted}
         user={user}
-        disabled={isAgentLoading}
+        disabled={isAgentLoading || switchingSession}
       />
       <div className="flex-1 min-w-0">
         <ChatScreen
