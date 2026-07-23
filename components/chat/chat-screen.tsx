@@ -83,6 +83,7 @@ export function ChatScreen({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const audioAbortRef = useRef<AbortController | null>(null)
   const prevLoadingRef = useRef(false)
   const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null)
 
@@ -90,6 +91,7 @@ export function ChatScreen({
   useEffect(() => {
     return () => {
       abortRef.current?.abort()
+      audioAbortRef.current?.abort()
     }
   }, [sessionId])
 
@@ -284,9 +286,17 @@ export function ChatScreen({
         setMessages((prev) => [...prev, agentMsg])
         setIsLoading(false)
 
+        // Cancel any previous in-flight audio synthesis (Issue #13 race condition:
+        // if the user sends a new message before audio finishes, the stale TTS
+        // response could overwrite the session's chat_history with outdated data).
+        audioAbortRef.current?.abort()
+        const audioController = new AbortController()
+        audioAbortRef.current = audioController
+
         // Show audio loading indicator, then synthesize in background (Issue #22)
         setAudioLoadingId(msgId)
-        synthesizeAudio(sessionId, controller.signal).then((url) => {
+        synthesizeAudio(sessionId, audioController.signal).then((url) => {
+          if (audioController.signal.aborted) return
           setAudioLoadingId(null)
           if (url) {
             setMessages((prev) =>
@@ -294,6 +304,7 @@ export function ChatScreen({
             )
           }
         }).catch((audioErr) => {
+          if (audioController.signal.aborted) return
           setAudioLoadingId(null)
           // Show inline audio failure hint instead of silently dropping
           const hint = audioErr instanceof ApiError
