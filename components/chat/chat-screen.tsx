@@ -286,10 +286,11 @@ export function ChatScreen({
         setMessages((prev) => [...prev, agentMsg])
         setIsLoading(false)
 
-        // Cancel any previous in-flight audio synthesis (Issue #13 race condition:
-        // if the user sends a new message before audio finishes, the stale TTS
-        // response could overwrite the session's chat_history with outdated data).
-        audioAbortRef.current?.abort()
+        // Use a fresh AbortController for each TTS request so that canceling
+        // the current chat request (abortRef) doesn't abort audio synthesis.
+        // We NO LONGER cancel in-flight TTS when a new message is sent — both
+        // requests should complete so both messages get their audio. The backend
+        // handles stale-write safety via content-hash matching.
         const audioController = new AbortController()
         audioAbortRef.current = audioController
 
