@@ -530,9 +530,10 @@ export async function renameSession(sessionId: string, title: string): Promise<b
     return false
   }
   if (res.ok) {
-    // Invalidate caches so sidebar refreshes with the new title (Issue #38)
+    // Invalidate caches so sidebar refreshes with the new title (Issue #38, #46)
     sessionCache.delete(sessionId)
     sessionsListCache = null
+    clearSessionsListFromStorage()
   }
   return res.ok
 }
@@ -548,9 +549,10 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
     return false
   }
   if (res.ok) {
-    // Invalidate caches so sidebar reflects the deletion immediately (Issue #38)
+    // Invalidate caches so sidebar reflects the deletion immediately (Issue #38, #46)
     sessionCache.delete(sessionId)
     sessionsListCache = null
+    clearSessionsListFromStorage()
   }
   return res.ok
 }
