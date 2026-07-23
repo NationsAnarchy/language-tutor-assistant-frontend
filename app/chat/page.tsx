@@ -11,7 +11,6 @@ import {
   getSession,
   langFromBackend,
   listSessions,
-  refreshSessionInBackground,
 } from "@/lib/api";
 import { audioManager } from "@/lib/audio-manager";
 import type { Language, Level, Message, Session } from "@/lib/types";
@@ -81,9 +80,6 @@ function ChatPageInner() {
           updated_at: (s as any).updated_at as string | undefined,
         })),
       );
-
-      // Background refresh — update the cache with fresh data for next time
-      refreshSessionInBackground(sessionIdParam).catch(() => {});
     } catch (err) {
       // Only redirect on a true 404 — session doesn't exist
       if (err instanceof ApiError && err.status === 404) {
@@ -197,9 +193,6 @@ function ChatPageInner() {
       if (!fromPopState) {
         window.history.pushState({ sessionId: targetSessionId }, '', `/chat?session=${targetSessionId}`);
       }
-
-      // Background refresh
-      refreshSessionInBackground(targetSessionId).catch(() => {});
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         router.replace("/language");
