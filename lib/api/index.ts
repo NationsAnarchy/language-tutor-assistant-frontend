@@ -569,24 +569,28 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
 }
 
 /**
- * Synthesize speech for the last assistant message and return an object URL
+ * Synthesize speech for an assistant message and return an object URL
  * for the audio blob that the frontend can play immediately (Issue #43).
  *
  * The backend now returns MP3 audio bytes. The frontend creates a blob URL
  * from the response body and plays it with HTMLAudioElement.
  *
- * After success, the backend automatically stores an audio_hash in the
- * session's chat_history so subsequent page loads can serve audio from
- * cache without calling the Gemini API again.
+ * A `messageContent` is passed so the backend can match the exact message
+ * and set audio_hash correctly, even if concurrent TTS requests exist.
  *
  * Returns null if synthesis fails or returns no data.
  */
-export async function synthesizeAudio(sessionId: string, signal?: AbortSignal): Promise<string | null> {
+export async function synthesizeAudio(
+  sessionId: string,
+  messageContent: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
   let res: Response
   try {
     res = await fetch(resolveURL(`/session/${sessionId}/tts`), {
       method: 'POST',
       headers: await getHeaders(),
+      body: JSON.stringify({ content: messageContent }),
       signal,
     })
   } catch (err) {

@@ -286,17 +286,15 @@ export function ChatScreen({
         setMessages((prev) => [...prev, agentMsg])
         setIsLoading(false)
 
-        // Use a fresh AbortController for each TTS request so that canceling
-        // the current chat request (abortRef) doesn't abort audio synthesis.
-        // We NO LONGER cancel in-flight TTS when a new message is sent — both
-        // requests should complete so both messages get their audio. The backend
-        // handles stale-write safety via content-hash matching.
+        // Use a fresh AbortController for each TTS request.
+        // Pass the message content so the backend can match the exact message
+        // and set audio_hash correctly, even if concurrent TTS requests exist.
         const audioController = new AbortController()
         audioAbortRef.current = audioController
 
         // Show audio loading indicator, then synthesize in background (Issue #22)
         setAudioLoadingId(msgId)
-        synthesizeAudio(sessionId, audioController.signal).then((url) => {
+        synthesizeAudio(sessionId, result.reply, audioController.signal).then((url) => {
           if (audioController.signal.aborted) return
           setAudioLoadingId(null)
           if (url) {

@@ -30,10 +30,11 @@ async function proxyRequest(
   const auth = request.headers.get('authorization')
   if (auth) headers.set('authorization', auth)
 
+  // Forward content-type for POST requests with a body (e.g. TTS now sends JSON body)
+  const contentType = request.headers.get('content-type')
+  if (contentType) headers.set('content-type', contentType)
+
   const binary = isBinary(pathname, method)
-  if (!binary) {
-    headers.set('content-type', 'application/json')
-  }
 
   try {
     const fetchInit: RequestInit = { method, headers }
