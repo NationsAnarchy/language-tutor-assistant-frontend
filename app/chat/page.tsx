@@ -9,6 +9,7 @@ import {
   clearTokenCache,
   clearSessionCaches,
   deleteSession,
+  getCachedAudioUrl,
   getSession,
   langFromBackend,
   listSessions,
@@ -58,13 +59,24 @@ function ChatPageInner() {
       ]);
 
       const history: Message[] = (sessionData.chat_history || []).map(
-        (msg, i) => ({
-          id: `history-${i}`,
-          role: msg.role === "user" ? ("user" as const) : ("agent" as const),
-          content: msg.content,
-          audioUrl: audioUrl(msg.audio_url ?? null) || undefined,
-          timestamp: new Date(),
-        }),
+        (msg, i) => {
+          // Prefer audio_hash for zero-cost replay from disk cache,
+          // fall back to audio_url for legacy compatibility.
+          let msgAudioUrl: string | undefined
+          if (msg.audio_hash) {
+            const cachedUrl = getCachedAudioUrl(msg.audio_hash)
+            if (cachedUrl) msgAudioUrl = cachedUrl
+          } else if (msg.audio_url) {
+            msgAudioUrl = audioUrl(msg.audio_url) || undefined
+          }
+          return {
+            id: `history-${i}`,
+            role: msg.role === "user" ? ("user" as const) : ("agent" as const),
+            content: msg.content,
+            audioUrl: msgAudioUrl,
+            timestamp: new Date(),
+          }
+        },
       );
 
       setInitialMessages(history);
@@ -175,13 +187,22 @@ function ChatPageInner() {
       // Fetch session data (may return cached data for ~30s)
       const sessionData = await getSession(targetSessionId);
       const history: Message[] = (sessionData.chat_history || []).map(
-        (msg, i) => ({
-          id: `history-${i}`,
-          role: msg.role === "user" ? ("user" as const) : ("agent" as const),
-          content: msg.content,
-          audioUrl: audioUrl(msg.audio_url ?? null) || undefined,
-          timestamp: new Date(),
-        }),
+        (msg, i) => {
+          let msgAudioUrl: string | undefined
+          if (msg.audio_hash) {
+            const cachedUrl = getCachedAudioUrl(msg.audio_hash)
+            if (cachedUrl) msgAudioUrl = cachedUrl
+          } else if (msg.audio_url) {
+            msgAudioUrl = audioUrl(msg.audio_url) || undefined
+          }
+          return {
+            id: `history-${i}`,
+            role: msg.role === "user" ? ("user" as const) : ("agent" as const),
+            content: msg.content,
+            audioUrl: msgAudioUrl,
+            timestamp: new Date(),
+          }
+        },
       );
 
       // Update all state at once — ChatScreen re-renders with new data
