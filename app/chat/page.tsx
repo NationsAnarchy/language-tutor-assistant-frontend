@@ -13,10 +13,11 @@ import {
   listSessions,
   refreshSessionInBackground,
 } from "@/lib/api";
+import { audioManager } from "@/lib/audio-manager";
 import type { Language, Level, Message, Session } from "@/lib/types";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 function ChatPageInner() {
   const { data: session, status, update: updateSession } = useSession();
@@ -32,6 +33,8 @@ function ChatPageInner() {
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isAgentLoading, setIsAgentLoading] = useState(false);
+  const [switchingSession, setSwitchingSession] = useState(false);
+  const switchingRef = useRef(false);
 
   // Load session data and all user sessions
   const loadData = useCallback(async () => {
@@ -85,6 +88,9 @@ function ChatPageInner() {
       // timeout will retry once the session is revalidated. (Issue #36)
     } finally {
       setLoading(false);
+      // Session load complete — hide the switching indicator (Issue #44)
+      setSwitchingSession(false);
+      switchingRef.current = false;
     }
   }, [sessionIdParam, router]);
 
@@ -153,23 +159,36 @@ function ChatPageInner() {
 
   const handleSelectSession = (selectedSessionId: string) => {
     if (selectedSessionId === sessionId) return;
+    // Stop any playing audio before switching conversations (Issue #42)
+    audioManager.stopAll();
+    // Show loading indicator immediately for session switch (Issue #44)
+    switchingRef.current = true;
+    setSwitchingSession(true);
     router.push(`/chat?session=${selectedSessionId}`);
   };
 
   const handleNewSession = () => {
+    // Stop any playing audio before navigating away (Issue #42)
+    audioManager.stopAll();
     clearSessionCaches();
     router.push("/language");
   };
 
   const handleSwitchLanguage = () => {
+    // Stop any playing audio before navigating away (Issue #42)
+    audioManager.stopAll();
     router.push("/language");
   };
 
   const handleSignOut = () => {
+    // Stop any playing audio before signing out (Issue #42)
+    audioManager.stopAll();
     signOut({ callbackUrl: "/login" });
   };
 
   const handleActiveSessionDeleted = async () => {
+    // Stop any playing audio before navigating (Issue #42)
+    audioManager.stopAll();
     // Refresh sessions to get updated list without the deleted one (Issue #33)
     try {
       const sessionsList = await listSessions();
@@ -196,10 +215,11 @@ function ChatPageInner() {
     }
   };
 
-  if (!forceReady && (status === "loading" || loading)) {
+  // Show loading indicator when switching between sessions (Issue #44)
+  if (!forceReady && (status === "loading" || loading || switchingSession)) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-background">
-        <Spinner size="lg" label="Loading..." />
+        <Spinner size="lg" label={switchingSession ? "Switching conversation..." : "Loading..."} />
       </main>
     );
   }

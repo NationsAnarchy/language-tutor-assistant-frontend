@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { Play, Square, Loader2, Snail, AlertTriangle, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { audioManager } from '@/lib/audio-manager'
 import type { AudioState, PlaybackSpeed } from '@/lib/types'
 
 /** Why audio playback failed — drives the retry / disabled behavior. */
@@ -58,11 +59,19 @@ export function AudioPlayButton({ audioUrl, className }: AudioPlayButtonProps) {
   /** Reset the audio element so a retry re-fetches from the server. */
   const resetAudio = useCallback(() => {
     if (audioRef.current) {
+      audioManager.unregister(audioRef.current)
       audioRef.current.pause()
       audioRef.current.removeAttribute('src')
       audioRef.current.load()
       audioRef.current = null
     }
+  }, [])
+
+  /** Listen for pause events caused by external sources (e.g. audioManager.stopAll). */
+  const attachExternalHandlers = useCallback((audio: HTMLAudioElement) => {
+    audio.addEventListener('pause', () => {
+      setAudioState('idle')
+    })
   }, [])
 
   const handlePlay = useCallback(async () => {
@@ -97,6 +106,10 @@ export function AudioPlayButton({ audioUrl, className }: AudioPlayButtonProps) {
           setFailure(reason)
           setAudioState('idle')
         })
+
+        // Register with global audio manager so navigation stops this audio
+        audioManager.register(audio)
+        attachExternalHandlers(audio)
       }
 
       // Set playback rate based on speed
@@ -109,7 +122,16 @@ export function AudioPlayButton({ audioUrl, className }: AudioPlayButtonProps) {
       // play() can reject with AbortError or NotAllowedError
       setAudioState('idle')
     }
-  }, [audioUrl, audioState, speed, failure, resetAudio])
+  }, [audioUrl, audioState, speed, failure, resetAudio, attachExternalHandlers])
+
+  /** Clean up audio manager registration on unmount. */
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioManager.unregister(audioRef.current)
+      }
+    }
+  }, [])
 
   const toggleSpeed = () => {
     setSpeed((prev) => (prev === 'normal' ? 'slow' : 'normal'))
