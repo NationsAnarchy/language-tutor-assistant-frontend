@@ -18,6 +18,8 @@ interface SessionSidebarProps {
   onSignOut: () => void
   onSessionsChanged?: () => void
   onActiveSessionDeleted?: () => void
+  onRenameSession?: (sessionId: string, newTitle: string) => void
+  onDeleteSession?: (sessionId: string, wasActive: boolean) => void
   user: User
   disabled?: boolean
 }
@@ -38,6 +40,8 @@ export function SessionSidebar({
   onSignOut,
   onSessionsChanged,
   onActiveSessionDeleted,
+  onRenameSession,
+  onDeleteSession,
   user,
   disabled,
 }: SessionSidebarProps) {
@@ -99,6 +103,8 @@ export function SessionSidebar({
                       onSelect={onSelectSession}
                       onSessionsChanged={onSessionsChanged}
                       onActiveSessionDeleted={onActiveSessionDeleted}
+                      onRename={onRenameSession}
+                      onDelete={onDeleteSession}
                       disabled={disabled}
                     />
                   ))}

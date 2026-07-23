@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { MessageCircle, Pencil, Trash2, Check, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { renameSession, deleteSession } from '@/lib/api'
+import { deleteSession, renameSession } from '@/lib/api'
 import { toast } from '@/lib/toast'
 import type { Session } from '@/lib/types'
 import { LEVEL_LABEL } from '@/lib/types'
@@ -14,6 +14,8 @@ interface SessionItemProps {
   onSelect: (id: string) => void
   onSessionsChanged?: () => void
   onActiveSessionDeleted?: () => void
+  onRename?: (sessionId: string, newTitle: string) => void
+  onDelete?: (sessionId: string, wasActive: boolean) => void
   disabled?: boolean
 }
 
@@ -23,6 +25,8 @@ export function SessionItem({
   onSelect,
   onSessionsChanged,
   onActiveSessionDeleted,
+  onRename,
+  onDelete,
   disabled,
 }: SessionItemProps) {
   const [editing, setEditing] = useState(false)
@@ -32,31 +36,45 @@ export function SessionItem({
 
   const handleRename = async () => {
     if (!editTitle.trim() || !session.session_id) return
-    setSaving(true)
-    const ok = await renameSession(session.session_id, editTitle.trim())
-    setSaving(false)
-    if (!ok) {
-      toast.error("Couldn't rename the conversation. Please try again.")
-      return
+    if (onRename) {
+      // Optimistic rename — parent updates state immediately (Issue #46)
+      onRename(session.session_id, editTitle.trim())
+      setEditing(false)
+    } else {
+      // Fallback: direct API call
+      setSaving(true)
+      const ok = await renameSession(session.session_id, editTitle.trim())
+      setSaving(false)
+      if (!ok) {
+        toast.error("Couldn't rename the conversation. Please try again.")
+        return
+      }
+      setEditing(false)
+      onSessionsChanged?.()
     }
-    setEditing(false)
-    onSessionsChanged?.()
   }
 
   const handleDelete = async () => {
     if (!session.session_id) return
-    setSaving(true)
-    const ok = await deleteSession(session.session_id)
-    setSaving(false)
-    if (!ok) {
-      toast.error("Couldn't delete the conversation. Please try again.")
-      return
-    }
-    setConfirmDelete(false)
-    if (isActive) {
-      onActiveSessionDeleted?.()
+    if (onDelete) {
+      // Optimistic delete — parent removes from state immediately (Issue #46)
+      onDelete(session.session_id, isActive)
+      setConfirmDelete(false)
     } else {
-      onSessionsChanged?.()
+      // Fallback: direct API call
+      setSaving(true)
+      const ok = await deleteSession(session.session_id)
+      setSaving(false)
+      if (!ok) {
+        toast.error("Couldn't delete the conversation. Please try again.")
+        return
+      }
+      setConfirmDelete(false)
+      if (isActive) {
+        onActiveSessionDeleted?.()
+      } else {
+        onSessionsChanged?.()
+      }
     }
   }
 
@@ -116,7 +134,7 @@ export function SessionItem({
         <span className="truncate">{session.title || LEVEL_LABEL[session.level]}</span>
       </button>
       {session.session_id && (
-        <span className="hidden group-hover:flex items-center gap-0.5 shrink-0 ml-auto">
+        <span className="flex items-center gap-0.5 shrink-0 ml-auto lg:opacity-0 lg:group-hover:opacity-100 lg:transition-opacity">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setEditTitle(session.title || ''); setEditing(true) }}

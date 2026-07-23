@@ -8,9 +8,11 @@ import {
   audioUrl,
   clearTokenCache,
   clearSessionCaches,
+  deleteSession,
   getSession,
   langFromBackend,
   listSessions,
+  renameSession,
 } from "@/lib/api";
 import { audioManager } from "@/lib/audio-manager";
 import type { Language, Level, Message, Session } from "@/lib/types";
@@ -228,6 +230,47 @@ function ChatPageInner() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [handlePopState]);
+
+  /** Optimistic rename — update sidebar immediately, sync in background (Issue #46). */
+  const handleRenameSession = useCallback(async (targetSessionId: string, newTitle: string) => {
+    // Optimistic update
+    setSessions(prev => prev.map(s =>
+      s.session_id === targetSessionId ? { ...s, title: newTitle } : s
+    ));
+    // Fire backend call
+    const ok = await renameSession(targetSessionId, newTitle);
+    if (!ok) {
+      // Rollback on failure — refresh from backend
+      refreshSessions();
+    }
+  }, [refreshSessions]);
+
+  /** Optimistic delete — remove from sidebar immediately, sync in background (Issue #46). */
+  const handleDeleteSession = useCallback(async (targetSessionId: string, wasActive: boolean) => {
+    // Optimistic remove from local state
+    setSessions(prev => prev.filter(s => s.session_id !== targetSessionId));
+
+    // Fire backend call
+    const ok = await deleteSession(targetSessionId);
+    if (!ok) {
+      // Rollback on failure — refresh from backend
+      refreshSessions();
+      return;
+    }
+
+    if (wasActive) {
+      // Navigate to the most recent remaining session
+      const remaining = [...sessions].filter(s => s.session_id !== targetSessionId);
+      const sorted = remaining
+        .filter(s => s.session_id)
+        .sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
+      if (sorted.length > 0 && sorted[0].session_id) {
+        router.push(`/chat?session=${sorted[0].session_id}`);
+      } else {
+        router.push("/language");
+      }
+    }
+  }, [sessions, refreshSessions, router]);
 
   const handleSelectSession = (selectedSessionId: string) => {
     if (selectedSessionId === sessionId || switchingRef.current) return;
