@@ -473,7 +473,7 @@ export function ChatScreen({
         </div>
 
         <div className="ml-auto text-xs text-muted-foreground hidden sm:block">
-          {mode === 'exercise' ? 'Answer the prompt below' : 'Free conversation with your tutor'}
+          {mode === 'exercise' ? 'Answer the prompt below' : 'Learn languages with your AI tutor'}
         </div>
       </div>
 
