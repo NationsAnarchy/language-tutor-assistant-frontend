@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Globe, LogOut, ChevronDown, Moon, Sun, Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getFlagSvgUrl } from '@/lib/twemoji'
-import { useTheme } from '@/lib/use-theme'
+import { useTheme } from '@/lib/hooks/use-theme'
 import type { Language, Level, User } from '@/lib/types'
 import { LANGUAGES } from '@/lib/types'
 

@@ -3,7 +3,7 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { LoginScreen } from '@/components/login-screen'
+import { LoginScreen } from '@/components/auth/login-screen'
 import { Spinner } from '@/components/ui/spinner'
 
 export default function LoginPage() {

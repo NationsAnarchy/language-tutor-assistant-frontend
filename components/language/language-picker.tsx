@@ -13,7 +13,7 @@ import {
   LANGUAGES,
   LEVELS,
 } from '@/lib/types'
-import { LinguaLogo } from './lingua-logo'
+import { LinguaLogo } from '../auth/lingua-logo'
 
 interface LanguagePickerProps {
   user: User

@@ -1,7 +1,7 @@
 "use client";
 
-import { ChatScreen } from "@/components/chat-screen";
-import { SessionSidebar } from "@/components/session-sidebar";
+import { ChatScreen } from "@/components/chat/chat-screen";
+import { SessionSidebar } from "@/components/layout/session-sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import {
   ApiError,

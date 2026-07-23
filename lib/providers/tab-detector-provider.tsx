@@ -1,7 +1,7 @@
 'use client'
 
-import { useMultiTabDetector } from './use-multi-tab-detector'
-import { MultiTabOverlay } from '@/components/multi-tab-overlay'
+import { useMultiTabDetector } from '../hooks/use-multi-tab-detector'
+import { MultiTabOverlay } from '@/components/ui/multi-tab-overlay'
 
 /** Wires multi-tab detection into the app.
  *  When a second tab is detected, it shows a full-screen overlay blocking

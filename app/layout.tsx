@@ -1,9 +1,9 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Toaster } from 'sonner'
-import { AuthSessionProvider } from '@/lib/auth-provider'
-import { ErrorBoundary } from '@/components/error-boundary'
-import { TabDetectorProvider } from '@/lib/tab-detector-provider'
+import { AuthSessionProvider } from '@/lib/auth/auth-provider'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { TabDetectorProvider } from '@/lib/providers/tab-detector-provider'
 import './globals.css'
 
 // Google Fonts loaded at runtime via <link> — avoids Turbopack build-time download

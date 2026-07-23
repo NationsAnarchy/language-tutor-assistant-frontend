@@ -1,7 +1,7 @@
 'use client'
 
 import { AlertTriangle, ArrowRight, XCircle } from 'lucide-react'
-import { LinguaLogo } from './lingua-logo'
+import { LinguaLogo } from '../auth/lingua-logo'
 
 interface MultiTabOverlayProps {
   /** Called when the user clicks "Use this tab". */

@@ -3,7 +3,7 @@
 import { signIn } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { LinguaLogo } from './lingua-logo'
-import { usePreventDoubleClick } from '@/lib/use-prevent-double-click'
+import { usePreventDoubleClick } from '@/lib/hooks/use-prevent-double-click'
 
 function GoogleIcon() {
   return (

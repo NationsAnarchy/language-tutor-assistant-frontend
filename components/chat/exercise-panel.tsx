@@ -5,7 +5,7 @@ import { RefreshCcw, Send, BookOpen, Loader2, AlertCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
-import { AudioPlayButton } from './audio-play-button'
+import { AudioPlayButton } from '../audio/audio-play-button'
 import type { Language } from '@/lib/types'
 
 interface ExercisePanelProps {

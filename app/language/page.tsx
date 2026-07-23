@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { LanguagePicker } from '@/components/language-picker'
+import { LanguagePicker } from '@/components/language/language-picker'
 import { Spinner } from '@/components/ui/spinner'
 import {
   createSession,

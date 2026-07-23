@@ -53,6 +53,12 @@ export const LEVELS: { value: Level; label: string; description: string }[] = [
   { value: 'advanced', label: 'Advanced', description: 'Nuanced grammar & idioms' },
 ]
 
+export const LEVEL_LABEL: Record<Level, string> = {
+  beginner: 'Beginner',
+  intermediate: 'Intermediate',
+  advanced: 'Advanced',
+}
+
 export const CHAT_PLACEHOLDERS: Record<Language, string> = {
   english: 'Type in English...',
   korean: '한국어로 입력하세요...',
