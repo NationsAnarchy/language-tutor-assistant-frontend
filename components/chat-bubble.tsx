@@ -155,7 +155,7 @@ export function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBu
   if (isUser) {
     return (
       <div className="flex justify-end" role="article" aria-label="Your message">
-        <div className="max-w-[78%] sm:max-w-[65%]">
+        <div className="max-w-[85%] sm:max-w-[65%]">
           <div className="px-4 py-3 rounded-2xl rounded-br-sm bg-primary text-primary-foreground text-sm leading-relaxed shadow-sm markdown-user">
             <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
               {message.content}
@@ -171,7 +171,7 @@ export function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBu
     <div className="flex items-end gap-2" role="article" aria-label="Tutor message">
       <TutorAvatar />
 
-      <div className="flex items-end gap-2 max-w-[78%] sm:max-w-[65%]">
+      <div className="flex flex-col gap-1.5 max-w-[85%] sm:max-w-[65%]">
         <div
           className={cn(
             'px-4 py-3 rounded-2xl rounded-bl-sm bg-card border border-border text-sm leading-relaxed shadow-sm',
@@ -216,23 +216,25 @@ export function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBu
           )}
         </div>
 
-        {/* Unobtrusive audio button, loading spinner, or failure hint */}
-        {message.audioUrl ? (
-          <AudioPlayButton
-            audioUrl={message.audioUrl}
-            className="mb-0.5 shrink-0"
-          />
-        ) : isAudioLoading ? (
-          <Spinner size="sm" className="mb-0.5 shrink-0" />
-        ) : audioFailureHint ? (
-          <span
-            className="mb-0.5 shrink-0 inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 px-1.5 py-0.5 rounded-md bg-muted/40"
-            title={audioFailureHint}
-            aria-label={audioFailureHint}
-          >
-            🔇
-          </span>
-        ) : null}
+        {/* Audio controls — stacked below the bubble on mobile, beside on desktop (Issue #46) */}
+        <div className="flex items-center gap-1.5 pl-1">
+          {message.audioUrl ? (
+            <AudioPlayButton
+              audioUrl={message.audioUrl}
+              className="shrink-0"
+            />
+          ) : isAudioLoading ? (
+            <Spinner size="sm" className="shrink-0" />
+          ) : audioFailureHint ? (
+            <span
+              className="shrink-0 inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 px-1.5 py-0.5 rounded-md bg-muted/40"
+              title={audioFailureHint}
+              aria-label={audioFailureHint}
+            >
+              🔇
+            </span>
+          ) : null}
+        </div>
       </div>
     </div>
   )
