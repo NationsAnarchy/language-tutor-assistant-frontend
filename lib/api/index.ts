@@ -405,8 +405,11 @@ export async function createSession(language: string, level: string): Promise<Cr
   if (!res.ok) {
     throw await classifyResponseError(res)
   }
-  // Invalidate sessions list cache so sidebar picks up the new session (Issue #38)
+  // Invalidate BOTH caches so sidebar picks up the new session immediately (Issue #38, #46)
+  // Must clear sessionStorage too — otherwise the chat page's listSessions() call
+  // returns the stale list from /language and the new session never appears.
   sessionsListCache = null
+  clearSessionsListFromStorage()
   const data = await res.json()
   return {
     session_id: data.session_id,
