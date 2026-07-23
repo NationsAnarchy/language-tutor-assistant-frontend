@@ -43,6 +43,13 @@ function ChatPageInner() {
       return;
     }
 
+    // If switchToSession is already handling this, skip — it fetches the
+    // same data and updates state directly. Prevents a double fetch when
+    // pushState causes useSearchParams to re-evaluate (Issue #45 duplicate).
+    if (switchingRef.current) {
+      return;
+    }
+
     try {
       const [sessionData, sessionsList] = await Promise.all([
         getSession(sessionIdParam),
