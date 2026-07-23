@@ -95,9 +95,47 @@ async function getHeaders(): Promise<Record<string, string>> {
 // ── Session cache (client-side) ─────────────────────────────────────────────
 // Cache session data and sessions list in memory so re-visiting a conversation
 // doesn't show a loading spinner. Invalidated after sending messages.
+// Also persisted to sessionStorage so it survives page navigations (Issue #45).
 const sessionCache = new Map<string, { data: SessionWithHistory; ts: number }>()
 let sessionsListCache: { data: BackendSession[]; ts: number } | null = null
+let sessionsListPromise: Promise<BackendSession[]> | null = null
 const CACHE_TTL = 30_000 // 30 seconds — balances freshness with snappy switches
+const STORAGE_KEY = 'lta_session_list_cache'
+
+/** Read the session list from sessionStorage (if available). */
+function readSessionsListFromStorage(): BackendSession[] | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { data: BackendSession[]; ts: number }
+    if (Date.now() - parsed.ts < CACHE_TTL) return parsed.data
+    sessionStorage.removeItem(STORAGE_KEY)
+    return null
+  } catch {
+    return null
+  }
+}
+
+/** Write the session list to sessionStorage. */
+function writeSessionsListToStorage(data: BackendSession[]) {
+  if (typeof window === 'undefined') return
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ data, ts: Date.now() }))
+  } catch {
+    // sessionStorage may be full — silently ignore
+  }
+}
+
+/** Clear the session list from sessionStorage. */
+function clearSessionsListFromStorage() {
+  if (typeof window === 'undefined') return
+  try {
+    sessionStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
 
 /** Return cached session data if fresh, otherwise null. */
 function getCachedSession(sessionId: string): SessionWithHistory | null {
@@ -111,14 +149,23 @@ function setCachedSession(sessionId: string, data: SessionWithHistory) {
 }
 
 function getCachedSessionsList(): BackendSession[] | null {
+  // Check in-memory cache first
   if (sessionsListCache && Date.now() - sessionsListCache.ts < CACHE_TTL) {
     return sessionsListCache.data
+  }
+  // Fall back to sessionStorage (survives page navigation)
+  const stored = readSessionsListFromStorage()
+  if (stored) {
+    // Restore into in-memory cache
+    sessionsListCache = { data: stored, ts: Date.now() }
+    return stored
   }
   return null
 }
 
 function setCachedSessionsList(data: BackendSession[]) {
   sessionsListCache = { data, ts: Date.now() }
+  writeSessionsListToStorage(data)
 }
 
 /** Invalidate cached data for a session — call after sending a chat message
@@ -132,6 +179,7 @@ export function invalidateSessionCache(sessionId: string) {
 export function clearSessionCaches() {
   sessionCache.clear()
   sessionsListCache = null
+  clearSessionsListFromStorage()
 }
 
 // ── ApiError — rich error classification ─────────────────────────────────────
@@ -398,20 +446,33 @@ export async function listSessions(): Promise<BackendSession[]> {
   const cached = getCachedSessionsList()
   if (cached) return cached
 
-  let res: Response
+  // Deduplicate concurrent calls — return the same in-flight promise (Issue #45)
+  if (sessionsListPromise) {
+    return sessionsListPromise
+  }
+
+  sessionsListPromise = (async () => {
+    let res: Response
+    try {
+      res = await fetch(resolveURL('/sessions'), {
+        headers: await getHeaders(),
+      })
+    } catch (err) {
+      throw classifyError(err)
+    }
+    if (!res.ok) {
+      throw await classifyResponseError(res)
+    }
+    const data = await res.json()
+    setCachedSessionsList(data)
+    return data
+  })()
+
   try {
-    res = await fetch(resolveURL('/sessions'), {
-      headers: await getHeaders(),
-    })
-  } catch (err) {
-    throw classifyError(err)
+    return await sessionsListPromise
+  } finally {
+    sessionsListPromise = null
   }
-  if (!res.ok) {
-    throw await classifyResponseError(res)
-  }
-  const data = await res.json()
-  setCachedSessionsList(data)
-  return data
 }
 
 /** Re-fetch a single session from the backend and update the cache.

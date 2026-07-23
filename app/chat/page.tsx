@@ -157,14 +157,53 @@ function ChatPageInner() {
     }
   }, []);
 
+  /** Client-side session switch — avoids full page re-mount (Issue #45). */
+  const switchToSession = useCallback(async (targetSessionId: string) => {
+    // Cancel any in-flight agent request from the previous session
+    // Fire a synthetic abort signal through ChatScreen's abortRef
+
+    setSwitchingSession(true);
+    switchingRef.current = true;
+
+    try {
+      // Fetch session data (may return cached data for ~30s)
+      const sessionData = await getSession(targetSessionId);
+      const history: Message[] = (sessionData.chat_history || []).map(
+        (msg, i) => ({
+          id: `history-${i}`,
+          role: msg.role === "user" ? ("user" as const) : ("agent" as const),
+          content: msg.content,
+          audioUrl: audioUrl(msg.audio_url ?? null) || undefined,
+          timestamp: new Date(),
+        }),
+      );
+
+      // Update all state at once — ChatScreen re-renders with new data
+      setInitialMessages(history);
+      setLanguage(langFromBackend(sessionData.language) as Language);
+      setLevel(sessionData.level as Level);
+      setSessionId(targetSessionId);
+
+      // Silently update the URL for bookmarking without a full navigation
+      router.replace(`/chat?session=${targetSessionId}`, { scroll: false });
+
+      // Background refresh
+      refreshSessionInBackground(targetSessionId).catch(() => {});
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        router.replace("/language");
+      }
+    } finally {
+      setSwitchingSession(false);
+      switchingRef.current = false;
+    }
+  }, [router]);
+
   const handleSelectSession = (selectedSessionId: string) => {
-    if (selectedSessionId === sessionId) return;
+    if (selectedSessionId === sessionId || switchingRef.current) return;
     // Stop any playing audio before switching conversations (Issue #42)
     audioManager.stopAll();
-    // Show loading indicator immediately for session switch (Issue #44)
-    switchingRef.current = true;
-    setSwitchingSession(true);
-    router.push(`/chat?session=${selectedSessionId}`);
+    switchToSession(selectedSessionId);
   };
 
   const handleNewSession = () => {
@@ -215,7 +254,7 @@ function ChatPageInner() {
     }
   };
 
-  // Show loading indicator when switching between sessions (Issue #44)
+  // Show loading indicator when initially loading or switching between sessions (Issue #44)
   if (!forceReady && (status === "loading" || loading || switchingSession)) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-background">
