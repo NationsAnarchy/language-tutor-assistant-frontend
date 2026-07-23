@@ -15,6 +15,7 @@ import {
   audioUrl,
   getSession,
   synthesizeAudio,
+  getCachedAudioUrl,
   invalidateSessionCache,
   clearTokenCache,
   ApiError,
@@ -113,13 +114,24 @@ export function ChatScreen({
     
     getSession(sessionId).then((data) => {
       if (cancelled) return
-      const history: Message[] = (data.chat_history || []).map((msg, i) => ({
-        id: `history-${i}`,
-        role: msg.role === 'user' ? 'user' as const : 'agent' as const,
-        content: msg.content,
-        audioUrl: msg.audio_url ? audioUrl(msg.audio_url) || undefined : undefined,
-        timestamp: new Date(),
-      }))
+      const history: Message[] = (data.chat_history || []).map((msg, i) => {
+        // Build audio URL: prefer cached audio_hash (zero-cost replay, no Gemini API call),
+        // fall back to audio_url for legacy compatibility.
+        let msgAudioUrl: string | undefined
+        if (msg.audio_hash) {
+          const cachedUrl = getCachedAudioUrl(msg.audio_hash)
+          if (cachedUrl) msgAudioUrl = cachedUrl
+        } else if (msg.audio_url) {
+          msgAudioUrl = audioUrl(msg.audio_url) || undefined
+        }
+        return {
+          id: `history-${i}`,
+          role: msg.role === 'user' ? 'user' as const : 'agent' as const,
+          content: msg.content,
+          audioUrl: msgAudioUrl,
+          timestamp: new Date(),
+        }
+      })
       if (history.length > 0) {
         setMessages(history)
       }

@@ -418,8 +418,19 @@ export async function createSession(language: string, level: string): Promise<Cr
   }
 }
 
+/** A single chat message from the backend's chat_history array.
+ *  audio_hash is the SHA-256 hash used as the MP3 cache filename.
+ *  The frontend can use audioUrl(audio_hash + '.mp3') to replay
+ *  past audio without calling the TTS endpoint again. */
+export interface ChatHistoryEntry {
+  role: string
+  content: string
+  audio_url?: string
+  audio_hash?: string
+}
+
 export interface SessionWithHistory extends BackendSession {
-  chat_history: { role: string; content: string; audio_url?: string }[]
+  chat_history: ChatHistoryEntry[]
 }
 
 export async function getSession(sessionId: string): Promise<SessionWithHistory> {
@@ -561,9 +572,12 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
  * Synthesize speech for the last assistant message and return an object URL
  * for the audio blob that the frontend can play immediately (Issue #43).
  *
- * The backend now returns raw audio bytes (WAV) directly instead of saving
- * to disk and returning a URL. The frontend creates a blob URL from the
- * response body and plays it with HTMLAudioElement.
+ * The backend now returns MP3 audio bytes. The frontend creates a blob URL
+ * from the response body and plays it with HTMLAudioElement.
+ *
+ * After success, the backend automatically stores an audio_hash in the
+ * session's chat_history so subsequent page loads can serve audio from
+ * cache without calling the Gemini API again.
  *
  * Returns null if synthesis fails or returns no data.
  */
@@ -583,12 +597,35 @@ export async function synthesizeAudio(sessionId: string, signal?: AbortSignal): 
     throw await classifyResponseError(res)
   }
 
-  // The backend now returns raw audio bytes — create a blob URL (Issue #43)
+  // The backend now returns MP3 bytes — create a blob URL (Issue #43)
   const audioBlob = await res.blob()
   // Revoke any previously created blob URLs for cleanup
   return URL.createObjectURL(audioBlob)
 }
 
+/**
+ * Build a URL for a cached audio file by its hash.
+ *
+ * The backend stores audio files as <hash>.mp3 in the cache directory
+ * (see _get_cache_path in app/tts.py). When chat_history entries have
+ * an audio_hash field, call this function to get the playback URL for
+ * zero-cost replay (no Gemini API call needed).
+ *
+ * Example: getCachedAudioUrl("a1b2c3d4e5f6g7h8") → "/api/proxy/audio/a1b2c3d4e5f6g7h8.mp3"
+ */
+export function getCachedAudioUrl(audioHash: string): string | null {
+  return audioUrl(`${audioHash}.mp3`)
+}
+
+/**
+ * Build a URL for an audio file served by the backend.
+ *
+ * For audio_hash replay (zero-cost): pass "hash.mp3"
+ * For other audio files: pass the filename string
+ *
+ * On Vercel, routes through the same-origin proxy (no CORS).
+ * The proxy handles binary data correctly using ArrayBuffer.
+ */
 export function audioUrl(filename: string | null): string | null {
   if (!filename) return null
   // On Vercel, route audio through the proxy (same-origin, no CORS).

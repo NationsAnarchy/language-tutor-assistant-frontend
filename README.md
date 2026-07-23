@@ -83,7 +83,7 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 
 | File | Description |
 |------|-------------|
-| `lib/api/index.ts` | Backend API client with `ApiError` classification, `sessionStorage` cache for sessions list, promise deduplication, and proxy-aware URL resolution |
+| `lib/api/index.ts` | Backend API client with `ApiError` classification, `sessionStorage` cache for sessions list, promise deduplication, and proxy-aware URL resolution. Includes `ChatHistoryEntry` type with `audio_hash` for zero-cost audio replay, `getCachedAudioUrl()` helper, and `synthesizeAudio()` for MP3 blob URL creation |
 | `lib/audio-manager.ts` | Global singleton tracking active audio elements; stops all on navigation, prevents tab close while playing |
 | `lib/auth/index.ts` | NextAuth configuration with Google/GitHub providers |
 | `lib/auth/auth-provider.tsx` | NextAuth session provider |
@@ -122,8 +122,8 @@ On Vercel, all API calls go through a same-origin proxy at `/api/proxy/[...path]
 ```
 Browser → /api/proxy/session → Railway backend
           /api/proxy/chat
-          /api/proxy/audio/...
-          /api/proxy/session/{id}/tts
+          /api/proxy/audio/...         ← cached MP3 replay
+          /api/proxy/session/{id}/tts  ← TTS synthesis
 ```
 
 The proxy handles both response types:
@@ -137,14 +137,22 @@ The `resolveURL()` function in `lib/api/index.ts` decides the target:
 ### Audio Pipeline
 
 ```
-Frontend → POST /session/{id}/tts → Backend (Gemini TTS)
-  → Raw WAV bytes in response body
-  → Blob URL (URL.createObjectURL)
-  → Audio element (AudioPlayButton)
-    → Play/Pause with seek bar, time display, volume slider, mute, speed control
+First request (new audio):
+  Frontend → POST /session/{id}/tts → Backend (Gemini TTS → ffmpeg MP3 encode → disk cache)
+    → MP3 bytes in response body
+    → Blob URL (URL.createObjectURL)
+    → Audio element (AudioPlayButton)
+    → Backend stores audio_hash in chat_history
+
+Replay (same or different page load):
+  Frontend sees audio_hash in chat_history
+    → GET /audio/{hash}.mp3 → served from disk cache (zero Gemini API calls)
+    → Blob URL → Audio element
 ```
 
-Audio is no longer saved to disk on the backend. Instead, the TTS endpoint returns raw WAV bytes directly in the HTTP response body. The `synthesizeAudio()` function in `lib/api/index.ts` creates a blob URL (`URL.createObjectURL(audioBlob)`) that the `AudioPlayButton` component plays with `HTMLAudioElement`. This eliminates disk I/O, removes the ffmpeg dependency, and reduces playback latency (no intermediate file fetch).
+The TTS endpoint returns **MP3** bytes (48 kbps, ~87% smaller than WAV) directly in the HTTP response body. The `synthesizeAudio()` function in `lib/api/index.ts` creates a blob URL (`URL.createObjectURL(audioBlob)`) that the `AudioPlayButton` component plays with `HTMLAudioElement`.
+
+After successful synthesis, the backend automatically writes an `audio_hash` into the session's `chat_history`. On subsequent page loads, the frontend uses `getCachedAudioUrl(audioHash)` to build a URL to `GET /audio/{hash}.mp3` — the MP3 is served from the backend's disk cache with **no Gemini TTS API call**. This means replaying audio from past conversations is free, and identical tutor responses ("Great job!", etc.) are only generated once via the API then cached forever.
 
 The `useAudioPlayer` hook manages all audio lifecycle (creation, event listeners, cleanup). The `AudioManager` singleton tracks all active audio instances globally:
 - **Navigation stops audio**: `audioManager.stopAll()` is called before switching conversations, navigating to language page, or signing out
@@ -168,9 +176,11 @@ This is more reliable than a simple counter — it correctly handles 3+ tabs, ra
 The frontend separates text and audio into two sequential requests (Issue #13):
 
 1. `POST /chat` → returns text reply immediately (no waiting for TTS)
-2. `POST /session/{id}/tts` → returns raw WAV bytes that the frontend plays as a blob URL (Issue #43)
+2. `POST /session/{id}/tts` → returns MP3 bytes that the frontend plays as a blob URL
 
-This means the user sees the tutor's text response instantly, while audio is synthesized and played asynchronously. A loading spinner (🔇) appears next to the message while audio is being generated, and failure hints are shown inline if TTS fails.
+This means the user sees the tutor's text response instantly, while audio is synthesized and played asynchronously. A loading spinner appears next to the message while audio is being generated, and failure hints are shown inline if TTS fails.
+
+On page refresh, the frontend loads past messages from `GET /session/{id}`. If a message has an `audio_hash` field, it uses `getCachedAudioUrl(audioHash)` to build the playback URL — audio plays instantly from the backend's disk cache with no additional API cost.
 
 ### Error Handling
 
