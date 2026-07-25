@@ -5,6 +5,7 @@ import { AudioPlayButton } from '../audio/audio-play-button'
 import { Spinner } from '../ui/spinner'
 import { TutorAvatar } from '../ui/tutor-avatar'
 import { CorrectionText } from './correction-text'
+import { TypingIndicator } from './typing-indicator'
 import { markdownComponents } from '../ui/markdown-config'
 import type { Message } from '@/lib/types'
 
@@ -42,7 +43,9 @@ export function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBu
             hasCorrections && 'pb-4'
           )}
         >
-          {hasCorrections && message.segments ? (
+          {!message.content ? (
+            <TypingIndicator />
+          ) : hasCorrections && message.segments ? (
             <div>
               <div
                 className="inline-flex items-center gap-1.5 text-[11px] font-semibold mb-2.5 px-2 py-1 rounded-full"
