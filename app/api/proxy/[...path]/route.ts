@@ -9,10 +9,18 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:800
 const BINARY_PREFIXES = ['/audio/']
 const BINARY_POST_PATTERNS = [/^\/session\/[^/]+\/tts$/]
 
+/** Paths that return Server-Sent Events (text/event-stream).
+ *  The proxy must passthrough the raw stream without buffering. */
+const SSE_PATHS = ['/chat']
+
 function isBinary(pathname: string, method: string): boolean {
   if (BINARY_PREFIXES.some((p) => pathname.startsWith(p))) return true
   if (method === 'POST' && BINARY_POST_PATTERNS.some((p) => p.test(pathname))) return true
   return false
+}
+
+function isSSE(pathname: string): boolean {
+  return SSE_PATHS.includes(pathname)
 }
 
 /** Proxy a request to the backend, preserving the response body type. */
@@ -60,6 +68,20 @@ async function proxyRequest(
           } : {
             'cache-control': 'no-cache',
           }),
+        },
+      })
+    }
+
+    // SSE streaming responses — passthrough the raw stream without buffering
+    if (isSSE(pathname) && res.body) {
+      return new NextResponse(res.body, {
+        status: res.status,
+        statusText: res.statusText,
+        headers: {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+          'connection': 'keep-alive',
+          'x-accel-buffering': 'no',
         },
       })
     }

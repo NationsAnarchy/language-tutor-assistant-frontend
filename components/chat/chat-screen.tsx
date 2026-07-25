@@ -11,7 +11,7 @@ import { ChatBubbleError } from './chat-bubble-error'
 import { TypingIndicator } from './typing-indicator'
 import { ExercisePanel } from './exercise-panel'
 import {
-  sendChat,
+  sendChatStream,
   audioUrl,
   getSession,
   synthesizeAudio,
@@ -272,18 +272,34 @@ export function ChatScreen({
         const controller = new AbortController()
         abortRef.current = controller
 
-        // Show text response immediately, then synthesize audio (Issue #13)
-        const result = await sendChat(sessionId, content, controller.signal)
-        // Invalidate cache so next visit to this session gets fresh history
-        invalidateSessionCache(sessionId)
+        // Placeholder agent message — tokens stream into it
         const msgId = (Date.now() + 1).toString()
         const agentMsg: Message = {
           id: msgId,
           role: 'agent',
-          content: result.reply,
+          content: '',
           timestamp: new Date(),
         }
         setMessages((prev) => [...prev, agentMsg])
+
+        // Stream tokens in real time via SSE
+        const streamingResult = await sendChatStream(
+          sessionId,
+          content,
+          (event) => {
+            if (event.type === 'token' && event.content) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === msgId ? { ...m, content: m.content + event.content } : m,
+                ),
+              )
+            }
+          },
+          controller.signal,
+        )
+
+        // Invalidate cache so next visit to this session gets fresh history
+        invalidateSessionCache(sessionId)
         setIsLoading(false)
 
         // Use a fresh AbortController for each TTS request.
@@ -294,7 +310,7 @@ export function ChatScreen({
 
         // Show audio loading indicator, then synthesize in background (Issue #22)
         setAudioLoadingId(msgId)
-        synthesizeAudio(sessionId, result.reply, audioController.signal).then((url) => {
+        synthesizeAudio(sessionId, streamingResult.reply, audioController.signal).then((url) => {
           if (audioController.signal.aborted) return
           setAudioLoadingId(null)
           if (url) {
@@ -382,16 +398,29 @@ export function ChatScreen({
 
     try {
       // Submit exercise answer as a chat message — the agent handles intent routing
-      const result = await sendChat(sessionId, answer)
-      invalidateSessionCache(sessionId)
+      const feedbackMsgId = (Date.now() + 1).toString()
       const feedbackMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: feedbackMsgId,
         role: 'agent',
-        content: result.reply,
-        audioUrl: audioUrl(result.audio_url) || undefined,
+        content: '',
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, feedbackMsg])
+
+      const exerciseResult = await sendChatStream(
+        sessionId,
+        answer,
+        (event) => {
+          if (event.type === 'token' && event.content) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === feedbackMsgId ? { ...m, content: m.content + event.content } : m,
+              ),
+            )
+          }
+        },
+      )
+      invalidateSessionCache(sessionId)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       handleError(err)
@@ -426,8 +455,12 @@ export function ChatScreen({
           ? '新しい練習問題を作ってください。'
           : 'Please generate a new exercise for me.'
 
-      const result = await sendChat(sessionId, exercisePrompt)
-      setCurrentExercise({ prompt: result.reply, audioUrl: audioUrl(result.audio_url) || undefined })
+      const exResult = await sendChatStream(
+        sessionId,
+        exercisePrompt,
+        () => {}, // no-op — exercise panel renders the full prompt at the end
+      )
+      setCurrentExercise({ prompt: exResult.reply })
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       // Show error inline in the exercise panel instead of as a toast

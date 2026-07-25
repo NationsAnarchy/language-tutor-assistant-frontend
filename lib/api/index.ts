@@ -511,6 +511,103 @@ export interface ChatResult {
   audio_url: string | null
 }
 
+/** SSE event from the streaming /chat endpoint. */
+export interface ChatStreamEvent {
+  type: 'token' | 'done' | 'error'
+  content?: string
+  intent?: string
+  message?: string
+}
+
+/**
+ * Stream a chat message via SSE. Calls `onEvent` for each Server-Sent Event.
+ *
+ * Returns a promise that resolves with the full reply text and intent when
+ * the stream completes, or rejects if an error event or fetch error occurs.
+ *
+ * The caller should use `signal` for cancellation (AbortController).
+ */
+export async function sendChatStream(
+  sessionId: string,
+  message: string,
+  onEvent: (event: ChatStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<{ reply: string; intent: string }> {
+  let res: Response
+  try {
+    res = await fetch(resolveURL('/chat'), {
+      method: 'POST',
+      headers: await getHeaders(),
+      body: JSON.stringify({ session_id: sessionId, message }),
+      signal,
+    })
+  } catch (err) {
+    throw classifyError(err)
+  }
+  if (!res.ok) {
+    throw await classifyResponseError(res)
+  }
+
+  // Read the SSE stream line-by-line
+  const reader = res.body?.getReader()
+  if (!reader) {
+    throw new ApiError(0, 'Streaming not supported by the browser.', 'unknown', false)
+  }
+
+  const decoder = new TextDecoder()
+  let fullReply = ''
+  let intent = 'chat'
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError')
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      // Keep the last partial line in the buffer
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6).trim()
+        if (!data) continue
+
+        let parsed: ChatStreamEvent
+        try {
+          parsed = JSON.parse(data)
+        } catch {
+          continue // Skip unparseable lines
+        }
+
+        onEvent(parsed)
+
+        switch (parsed.type) {
+          case 'token':
+            if (parsed.content) fullReply += parsed.content
+            break
+          case 'done':
+            intent = parsed.intent || 'chat'
+            break
+          case 'error':
+            throw new ApiError(500, parsed.message || 'Stream error.', 'server', true)
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  return { reply: fullReply, intent }
+}
+
+/**
+ * @deprecated Use sendChatStream() for streaming SSE responses.
+ * Kept for backwards compatibility — internally calls sendChatStream
+ * and returns the assembled result.
+ */
 export async function sendChat(sessionId: string, message: string, signal?: AbortSignal): Promise<ChatResult> {
   let res: Response
   try {
