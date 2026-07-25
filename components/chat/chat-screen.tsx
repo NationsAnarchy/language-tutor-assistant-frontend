@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { TopBar } from '../layout/top-bar'
 import { ChatBubble } from './chat-bubble'
 import { ChatBubbleError } from './chat-bubble-error'
-import { TypingIndicator } from './typing-indicator'
 import { ExercisePanel } from './exercise-panel'
 import {
   sendChatStream,
@@ -589,9 +588,6 @@ export function ChatScreen({
               )}
             </div>
           ))}
-
-          {/* Typing indicator */}
-          {isLoading && <TypingIndicator />}
 
           <div ref={messagesEndRef} />
         </main>
