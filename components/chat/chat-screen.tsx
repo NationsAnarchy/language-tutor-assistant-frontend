@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Send, BookOpen, Sparkles } from 'lucide-react'
+import { Send, BookOpen, Sparkles, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { TopBar } from '../layout/top-bar'
@@ -101,6 +101,11 @@ export function ChatScreen({
     // Clear per-message errors when switching sessions
     setMessageErrors(new Map())
     setAudioFailures(new Map())
+    // Reset exercise state for the new conversation
+    setCurrentExercise(undefined)
+    setIsExerciseDrawerOpen(false)
+    setIsExerciseLoading(false)
+    setExerciseError(null)
   }, [initialMessages])
 
   // Fallback: if we have a sessionId but no messages, try loading history from backend.
@@ -610,7 +615,11 @@ export function ChatScreen({
             aria-label={currentExercise ? 'Resume exercise' : 'Start a new exercise'}
             title={currentExercise ? 'Resume exercise' : 'New exercise'}
           >
-            <BookOpen className="size-4" aria-hidden="true" />
+            {isExerciseLoading ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <BookOpen className="size-4" aria-hidden="true" />
+            )}
           </Button>
 
           <textarea
