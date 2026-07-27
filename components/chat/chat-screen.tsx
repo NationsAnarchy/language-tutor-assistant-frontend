@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Send, BookOpen, MessageSquare, Sparkles } from 'lucide-react'
+import { Send, BookOpen, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { TopBar } from '../layout/top-bar'
@@ -20,7 +20,7 @@ import {
   ApiError,
 } from '@/lib/api'
 import { toast } from '@/lib/toast'
-import type { Language, Level, User, Message, ChatMode } from '@/lib/types'
+import type { Language, Level, User, Message } from '@/lib/types'
 import { CHAT_PLACEHOLDERS } from '@/lib/types'
 
 // Starter prompt suggestions per language
@@ -69,7 +69,7 @@ export function ChatScreen({
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [mode, setMode] = useState<ChatMode>('chat')
+  const [isExerciseDrawerOpen, setIsExerciseDrawerOpen] = useState(false)
   const [currentExercise, setCurrentExercise] = useState<{ prompt: string; audioUrl?: string } | undefined>(undefined)
   const [isExerciseLoading, setIsExerciseLoading] = useState(false)
   /** Map of messageId → error info for failed user messages. */
@@ -141,9 +141,13 @@ export function ChatScreen({
     return () => { cancelled = true }
   }, [sessionId, initialMessages])
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages.
+  // Use instant scroll during active streaming (tokens arrive faster than a smooth
+  // animation can complete, causing jank) and smooth for completed responses.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    messagesEndRef.current?.scrollIntoView({
+      behavior: isLoading ? 'instant' : 'smooth',
+    })
   }, [messages, isLoading])
 
   // Notify parent of loading state (Issue #35)
@@ -154,11 +158,11 @@ export function ChatScreen({
   // Autofocus chat input after agent response is rendered (Issue #39)
   // No need to wait for audio synthesis — just the text response.
   useEffect(() => {
-    if (prevLoadingRef.current && !isLoading && mode === 'chat') {
+    if (prevLoadingRef.current && !isLoading) {
       textareaRef.current?.focus()
     }
     prevLoadingRef.current = isLoading
-  }, [isLoading, mode])
+  }, [isLoading])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -383,6 +387,7 @@ export function ChatScreen({
       }
       setMessages((prev) => [...prev, feedbackMsg])
       setIsLoading(false)
+      setIsExerciseDrawerOpen(false)
       return
     }
 
@@ -394,6 +399,7 @@ export function ChatScreen({
     }
     setMessages((prev) => [...prev, userMsg])
     setIsLoading(true)
+    setIsExerciseDrawerOpen(false)
 
     try {
       // Submit exercise answer as a chat message — the agent handles intent routing
@@ -420,6 +426,29 @@ export function ChatScreen({
         },
       )
       invalidateSessionCache(sessionId)
+      setIsLoading(false)
+
+      // Synthesize audio for the exercise feedback message
+      const audioController = new AbortController()
+      audioAbortRef.current = audioController
+      setAudioLoadingId(feedbackMsgId)
+      synthesizeAudio(sessionId, exerciseResult.reply, audioController.signal).then((url) => {
+        if (audioController.signal.aborted) return
+        setAudioLoadingId(null)
+        if (url) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === feedbackMsgId ? { ...m, audioUrl: url } : m)),
+          )
+        }
+      }).catch((audioErr) => {
+        if (audioController.signal.aborted) return
+        setAudioLoadingId(null)
+        const hint = audioErr instanceof ApiError
+          ? "Audio couldn't be generated right now."
+          : 'Audio unavailable.'
+        setAudioFailures((prev) => new Map(prev).set(feedbackMsgId, hint))
+      })
+      return
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       handleError(err)
@@ -442,6 +471,7 @@ export function ChatScreen({
             : 'Translate the following sentence into your target language: "I went to the market yesterday to buy vegetables."',
       })
       setIsExerciseLoading(false)
+      setIsExerciseDrawerOpen(true)
       return
     }
 
@@ -460,6 +490,19 @@ export function ChatScreen({
         () => {}, // no-op — exercise panel renders the full prompt at the end
       )
       setCurrentExercise({ prompt: exResult.reply })
+      setIsExerciseDrawerOpen(true)
+
+      // Synthesize audio for the exercise prompt (playable in the drawer)
+      const audioController = new AbortController()
+      audioAbortRef.current = audioController
+      synthesizeAudio(sessionId, exResult.reply, audioController.signal).then((url) => {
+        if (audioController.signal.aborted) return
+        if (url) {
+          setCurrentExercise((prev) => prev ? { ...prev, audioUrl: url } : prev)
+        }
+      }).catch(() => {
+        // Audio for exercise prompt is non-critical — silently ignore failures
+      })
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       // Show error inline in the exercise panel instead of as a toast
@@ -484,52 +527,6 @@ export function ChatScreen({
         onToggleSidebar={onToggleSidebar}
         sidebarOpen={sidebarOpen}
       />
-
-      {/* Mode toggle tabs */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-border bg-card/60 backdrop-blur-sm">
-        <div
-          className="flex items-center gap-1 p-1 rounded-xl bg-muted/50 border border-border/60"
-          role="tablist"
-          aria-label="Chat mode"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'chat'}
-            onClick={() => setMode('chat')}
-            disabled={isLoading}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              mode === 'chat'
-                ? 'bg-background text-foreground shadow-sm border border-border/60'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <MessageSquare className="size-3.5" aria-hidden="true" />
-            Chat
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'exercise'}
-            onClick={() => setMode('exercise')}
-            disabled={isLoading}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              mode === 'exercise'
-                ? 'bg-background text-foreground shadow-sm border border-border/60'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <BookOpen className="size-3.5" aria-hidden="true" />
-            Exercise
-          </button>
-        </div>
-
-        <div className="ml-auto text-xs text-muted-foreground hidden sm:block">
-          {mode === 'exercise' ? 'Answer the prompt below' : 'Learn languages with your AI tutor'}
-        </div>
-      </div>
 
       {/* Empty state — separate from scrollable message area to avoid any overflow */}
       {isEmpty ? (
@@ -593,62 +590,80 @@ export function ChatScreen({
         </main>
       )}
 
-      {/* Exercise panel (mode-dependent) */}
-      {mode === 'exercise' && (
-        <ExercisePanel
-          language={language}
-          onSubmitAnswer={handleExerciseSubmit}
-          onRequestNew={handleRequestNewExercise}
-          isLoading={isLoading || isExerciseLoading}
-          currentExercise={currentExercise}
-          error={exerciseError}
-          onDismissError={() => setExerciseError(null)}
-        />
-      )}
+      {/* Chat input — always visible */}
+      <div className="px-4 py-3 border-t border-border bg-card/70 backdrop-blur-sm shrink-0">
+        <div className="flex gap-2.5 items-end max-w-3xl mx-auto">
+          {/* Exercise trigger button */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              if (currentExercise && !isExerciseDrawerOpen) {
+                // Resume last exercise
+                setIsExerciseDrawerOpen(true)
+              } else {
+                handleRequestNewExercise()
+              }
+            }}
+            disabled={isLoading || isExerciseLoading}
+            className="h-11 w-11 p-0 rounded-2xl shrink-0 shadow-xs"
+            aria-label={currentExercise ? 'Resume exercise' : 'Start a new exercise'}
+            title={currentExercise ? 'Resume exercise' : 'New exercise'}
+          >
+            <BookOpen className="size-4" aria-hidden="true" />
+          </Button>
 
-      {/* Chat input (only in chat mode) */}
-      {mode === 'chat' && (
-        <div className="px-4 py-3 border-t border-border bg-card/70 backdrop-blur-sm">
-          <div className="flex gap-2.5 items-end max-w-3xl mx-auto">
-            <textarea
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (
-                  e.key === 'Enter' &&
-                  !e.shiftKey &&
-                  !e.nativeEvent.isComposing &&
-                  !(e.keyCode === 229)
-                ) {
-                  e.preventDefault()
-                  handleSend()
-                }
-              }}
-              placeholder={CHAT_PLACEHOLDERS[language]}
-              rows={1}
-              disabled={isLoading}
-              aria-label="Message input"
-              className="flex-1 resize-none rounded-2xl border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all leading-relaxed min-h-11 max-h-32 disabled:opacity-50 shadow-xs"
-              style={{ overflowY: 'hidden' }}
-            />
-            <Button
-              size="sm"
-              onClick={handleSend}
-              disabled={!inputValue.trim() || isLoading}
-              className="h-11 w-11 p-0 rounded-2xl shrink-0 shadow-xs"
-              aria-label="Send message"
-            >
-              <Send className="size-4" aria-hidden="true" />
-            </Button>
-          </div>
-          <p className="text-center text-[11px] text-muted-foreground mt-2">
-            Press <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Enter</kbd> to send
-            {' '}·{' '}
-            <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Shift+Enter</kbd> for new line
-          </p>
+          <textarea
+            ref={textareaRef}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (
+                e.key === 'Enter' &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing &&
+                !(e.keyCode === 229)
+              ) {
+                e.preventDefault()
+                handleSend()
+              }
+            }}
+            placeholder={CHAT_PLACEHOLDERS[language]}
+            rows={1}
+            disabled={isLoading}
+            aria-label="Message input"
+            className="flex-1 resize-none rounded-2xl border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all leading-relaxed min-h-11 max-h-32 disabled:opacity-50 shadow-xs"
+            style={{ overflowY: 'hidden' }}
+          />
+          <Button
+            size="sm"
+            onClick={handleSend}
+            disabled={!inputValue.trim() || isLoading}
+            className="h-11 w-11 p-0 rounded-2xl shrink-0 shadow-xs"
+            aria-label="Send message"
+          >
+            <Send className="size-4" aria-hidden="true" />
+          </Button>
         </div>
-      )}
+        <p className="text-center text-[11px] text-muted-foreground mt-2">
+          Press <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Enter</kbd> to send
+          {' '}·{' '}
+          <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Shift+Enter</kbd> for new line
+        </p>
+      </div>
+      {/* Exercise drawer overlay — must be outside the flex column to avoid
+          disrupting the main content layout and scroll behavior */}
+      <ExercisePanel
+        language={language}
+        onSubmitAnswer={handleExerciseSubmit}
+        onRequestNew={handleRequestNewExercise}
+        isLoading={isLoading || isExerciseLoading}
+        currentExercise={currentExercise}
+        error={exerciseError}
+        onDismissError={() => setExerciseError(null)}
+        isOpen={isExerciseDrawerOpen}
+        onClose={() => setIsExerciseDrawerOpen(false)}
+      />
     </div>
   )
 }

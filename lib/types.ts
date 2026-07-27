@@ -1,6 +1,5 @@
 export type Language = 'english' | 'korean' | 'japanese'
 export type Level = 'beginner' | 'intermediate' | 'advanced'
-export type ChatMode = 'chat' | 'exercise'
 export type AudioState = 'idle' | 'loading' | 'playing' | 'paused'
 export type PlaybackSpeed = 'normal' | 'slow'
 

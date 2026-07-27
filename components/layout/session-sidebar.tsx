@@ -1,11 +1,9 @@
 'use client'
 
-import { useState } from 'react'
-import { Menu, X, Plus, MessageCircle, Globe } from 'lucide-react'
+import { X, Plus, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getFlagSvgUrl } from '@/lib/twemoji'
-import type { Language, Level, Session, User } from '@/lib/types'
-import { LANGUAGES } from '@/lib/types'
+import type { Language, Session, User } from '@/lib/types'
 import { SessionItem } from './session-item'
 
 interface SessionSidebarProps {
@@ -37,12 +35,10 @@ export function SessionSidebar({
   onToggle,
   onSelectSession,
   onNewSession,
-  onSignOut,
   onSessionsChanged,
   onActiveSessionDeleted,
   onRenameSession,
   onDeleteSession,
-  user,
   disabled,
 }: SessionSidebarProps) {
   const grouped: Record<Language, Session[]> = { english: [], korean: [], japanese: [] }
