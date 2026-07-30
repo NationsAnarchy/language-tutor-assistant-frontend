@@ -1,5 +1,8 @@
 'use client'
 
+import type { Language, Level, Message, Session } from '@/lib/types'
+import { toast } from '@/lib/toast'
+
 // In development, the frontend talks directly to the backend.
 // In production (Vercel), we use a same-origin Next.js API proxy to avoid CORS.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
@@ -380,6 +383,8 @@ export interface BackendSession {
   user_id: string
   language: string // backend code: 'en'|'ko'|'ja'
   level: string
+  title?: string
+  mistake_count?: number
   created_at: string
   updated_at?: string
 }
@@ -665,6 +670,29 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
   return res.ok
 }
 
+// ── Mistakes ─────────────────────────────────────────────────────────────────
+
+export interface MistakeEntry {
+  type: 'grammar' | 'vocabulary' | 'pronunciation' | 'spelling'
+  detail: string
+  timestamp: string
+}
+
+export async function getMistakes(sessionId: string): Promise<MistakeEntry[]> {
+  let res: Response
+  try {
+    res = await fetch(resolveURL(`/session/${sessionId}/mistakes`), {
+      headers: await getHeaders(),
+    })
+  } catch (err) {
+    throw classifyError(err)
+  }
+  if (!res.ok) {
+    throw await classifyResponseError(res)
+  }
+  return res.json()
+}
+
 /**
  * Synthesize speech for an assistant message and return an object URL
  * for the audio blob that the frontend can play immediately (Issue #43).
@@ -743,4 +771,108 @@ export function langToBackend(lang: string): string {
 
 export function langFromBackend(lang: string): string {
   return LANG_FROM_BACKEND[lang] || lang
+}
+
+// ── Error handling helper — shared toast + inline-message logic ──────────────
+
+/**
+ * Handle an ApiError (or generic error): show the appropriate toast for global
+ * events (auth, network) and return a user-friendly message + retryable flag
+ * for inline display.
+ *
+ * `router` is used to redirect to /login on auth errors.
+ */
+export function handleApiError(
+  err: unknown,
+  router: { replace: (path: string) => void },
+): { message: string; retryable: boolean } {
+  if (err instanceof ApiError) {
+    switch (err.code) {
+      case 'auth':
+        clearTokenCache()
+        toast.error(err.message, {
+          description: 'Redirecting you to sign in…',
+          duration: 3000,
+        })
+        setTimeout(() => router.replace('/login'), 1500)
+        return { message: err.message, retryable: false }
+
+      case 'network':
+        toast.error(err.message, {
+          action: { label: 'Retry', onClick: () => {} },
+        })
+        return { message: err.message, retryable: true }
+
+      case 'timeout':
+        toast.warning(err.message)
+        return { message: err.message, retryable: true }
+
+      case 'server':
+        toast.error(err.message)
+        return { message: err.message, retryable: true }
+
+      case 'rate_limit':
+        toast.warning(err.message)
+        return { message: err.message, retryable: true }
+
+      case 'forbidden':
+        toast.error(err.message)
+        return { message: err.message, retryable: false }
+
+      case 'not_found':
+        toast.error(err.message)
+        return { message: err.message, retryable: false }
+
+      default:
+        toast.error(err.message || 'Something went wrong.')
+        return {
+          message: err.message || 'Something went wrong.',
+          retryable: false,
+        }
+    }
+  }
+
+  // Fallback for non-ApiError
+  const msg =
+    err instanceof Error
+      ? err.message
+      : 'Something went wrong. Please try again.'
+  toast.error(msg)
+  return { message: msg, retryable: false }
+}
+
+// ── Mapping helpers — convert backend payloads to frontend domain types ──────
+
+/** Convert a backend session row into the frontend `Session` shape. */
+export function mapBackendSession(s: BackendSession): Session {
+  return {
+    language: langFromBackend(s.language) as Language,
+    level: s.level as Level,
+    exists: true,
+    session_id: s.session_id,
+    title: s.title,
+    mistake_count: s.mistake_count,
+    updated_at: s.updated_at,
+  }
+}
+
+/** Convert a backend chat_history array into frontend `Message[]`.
+ *  Resolves audio URLs using audio_hash (zero-cost replay) with audio_url fallback. */
+export function mapChatHistory(history: ChatHistoryEntry[] | undefined): Message[] {
+  return (history || []).map((msg, i) => {
+    let msgAudioUrl: string | undefined
+    if (msg.audio_hash) {
+      const cachedUrl = getCachedAudioUrl(msg.audio_hash)
+      if (cachedUrl) msgAudioUrl = cachedUrl
+    } else if (msg.audio_url) {
+      msgAudioUrl = audioUrl(msg.audio_url) || undefined
+    }
+    return {
+      id: `history-${i}`,
+      role: msg.role === 'user' ? ('user' as const) : ('agent' as const),
+      content: msg.content,
+      audioUrl: msgAudioUrl,
+      timestamp: new Date(),
+    }
+  })
 }

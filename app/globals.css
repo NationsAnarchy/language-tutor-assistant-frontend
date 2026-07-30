@@ -166,6 +166,14 @@
   }
 }
 
+/* Subtle background grid pattern — shared by login-screen and multi-tab-overlay */
+.bg-grid-subtle {
+  background-image:
+    linear-gradient(to right, var(--color-foreground) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-foreground) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
 /* Markdown inside user bubble (primary background) — use white-tinted code blocks */
 .markdown-user code {
   background-color: rgb(255 255 255 / 18%) !important;

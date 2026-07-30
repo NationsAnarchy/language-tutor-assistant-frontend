@@ -15,6 +15,7 @@ export interface Session {
   exists: boolean
   session_id?: string
   title?: string
+  mistake_count?: number
   updated_at?: string
 }
 
@@ -31,13 +32,6 @@ export interface Message {
   segments?: CorrectionSegment[]
   audioUrl?: string
   timestamp: Date
-}
-
-export interface ExerciseState {
-  prompt: string
-  audioUrl?: string
-  answer: string
-  submitted: boolean
 }
 
 export const LANGUAGES: { value: Language; label: string; nativeLabel: string; flag: string }[] = [
@@ -62,4 +56,10 @@ export const CHAT_PLACEHOLDERS: Record<Language, string> = {
   english: 'Type in English...',
   korean: '한국어로 입력하세요...',
   japanese: '日本語で入力してください...',
+}
+
+export const ANSWER_PLACEHOLDERS: Record<Language, string> = {
+  english: 'Type your answer in English...',
+  korean: '한국어로 답을 입력하세요...',
+  japanese: '日本語で答えを入力してください...',
 }

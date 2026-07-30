@@ -3,10 +3,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { Globe, LogOut, ChevronDown, Moon, Sun, Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getFlagSvgUrl } from '@/lib/twemoji'
+import { Flag } from '@/components/ui/flag'
+import { LinguaLogo } from '@/components/auth/lingua-logo'
 import { useTheme } from '@/lib/hooks/use-theme'
 import type { Language, Level, User } from '@/lib/types'
-import { LANGUAGES } from '@/lib/types'
+import { LANGUAGES, LEVEL_LABEL } from '@/lib/types'
 
 interface TopBarProps {
   user: User
@@ -50,7 +51,7 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
   const { theme, toggle: toggleTheme } = useTheme()
 
   const langMeta = LANGUAGES.find((l) => l.value === language)
-  const levelLabel = level.charAt(0).toUpperCase() + level.slice(1)
+  const levelLabel = LEVEL_LABEL[level]
 
   // Close on outside click
   useEffect(() => {
@@ -78,23 +79,7 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
       <div className="flex items-center gap-3 min-w-0">
         {/* Logo mark */}
         <div className="flex items-center gap-2 shrink-0">
-          <div className="size-7 rounded-lg bg-primary flex items-center justify-center">
-            <svg
-              viewBox="0 0 32 32"
-              className="size-4 text-primary-foreground"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
-              <path d="M6 10h10M6 16h7" strokeLinecap="round" />
-              <path
-                d="M20 8c4.418 0 8 3.134 8 7s-3.582 7-8 7a8.65 8.65 0 01-2.5-.366L13 24v-4.366C21 19.634 28 15.866 28 10"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
+          <LinguaLogo size="xs" />
           <span className="font-bold text-sm text-foreground hidden sm:block">LinguaAI</span>
         </div>
 
@@ -106,14 +91,7 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
           aria-label={`Currently studying ${langMeta?.label}, ${levelLabel} level`}
         >
           <span className="text-sm leading-none shrink-0" role="img" aria-label={`${langMeta?.label} flag`}>
-            {langMeta?.flag && (
-              <img
-                src={getFlagSvgUrl(langMeta.flag)}
-                alt=""
-                className="inline-block size-[1em] align-text-bottom"
-                draggable={false}
-              />
-            )}
+            {langMeta?.flag && <Flag emoji={langMeta.flag} />}
           </span>
           <span className="text-sm font-semibold text-foreground truncate">{langMeta?.nativeLabel}</span>
           <span className="text-muted-foreground/60 text-sm shrink-0" aria-hidden="true">·</span>

@@ -17,13 +17,8 @@ export function MultiTabOverlay({ onElectThisTab }: MultiTabOverlayProps) {
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background p-4">
       {/* Subtle background grid pattern */}
       <div
-        className="fixed inset-0 pointer-events-none opacity-[0.025]"
+        className="fixed inset-0 pointer-events-none opacity-[0.025] bg-grid-subtle"
         aria-hidden="true"
-        style={{
-          backgroundImage:
-            'linear-gradient(to right, var(--color-foreground) 1px, transparent 1px), linear-gradient(to bottom, var(--color-foreground) 1px, transparent 1px)',
-          backgroundSize: '40px 40px',
-        }}
       />
 
       <div className="w-full max-w-md flex flex-col items-center gap-6 text-center relative">

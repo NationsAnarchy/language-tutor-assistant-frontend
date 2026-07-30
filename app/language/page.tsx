@@ -8,7 +8,7 @@ import { Spinner } from '@/components/ui/spinner'
 import {
   createSession,
   listSessions,
-  langFromBackend,
+  mapBackendSession,
 } from '@/lib/api'
 import type { Language, Level, Session } from '@/lib/types'
 
@@ -22,16 +22,7 @@ export default function LanguagePage() {
     setSessionsLoading(true)
     try {
       const sessions = await listSessions()
-      setExistingSessions(
-        sessions.map((s) => ({
-          language: langFromBackend(s.language) as Language,
-          level: s.level as Level,
-          exists: true,
-          session_id: s.session_id,
-          title: (s as any).title as string | undefined,
-          updated_at: (s as any).updated_at as string | undefined,
-        })),
-      )
+      setExistingSessions(sessions.map(mapBackendSession))
     } catch {
       setExistingSessions([])
     } finally {

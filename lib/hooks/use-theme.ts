@@ -22,6 +22,8 @@ function applyTheme(theme: Theme) {
   const root = document.documentElement
   root.classList.toggle('dark', theme === 'dark')
   root.style.colorScheme = theme
+  // MDEditor CSS requires data-color-mode on the document element to switch themes
+  root.setAttribute('data-color-mode', theme)
 }
 
 export function useTheme() {

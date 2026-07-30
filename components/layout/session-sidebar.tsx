@@ -2,8 +2,9 @@
 
 import { X, Plus, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getFlagSvgUrl } from '@/lib/twemoji'
-import type { Language, Session, User } from '@/lib/types'
+import { Flag } from '@/components/ui/flag'
+import { LANGUAGES } from '@/lib/types'
+import type { Language, Session } from '@/lib/types'
 import { SessionItem } from './session-item'
 
 interface SessionSidebarProps {
@@ -13,19 +14,9 @@ interface SessionSidebarProps {
   onToggle: () => void
   onSelectSession: (sessionId: string) => void
   onNewSession: () => void
-  onSignOut: () => void
-  onSessionsChanged?: () => void
-  onActiveSessionDeleted?: () => void
   onRenameSession?: (sessionId: string, newTitle: string) => void
   onDeleteSession?: (sessionId: string, wasActive: boolean) => void
-  user: User
   disabled?: boolean
-}
-
-const LANGUAGE_META: Record<Language, { label: string; nativeLabel: string; flag: string }> = {
-  english: { label: 'English', nativeLabel: 'English', flag: '🇺🇸' },
-  korean: { label: 'Korean', nativeLabel: '한국어', flag: '🇰🇷' },
-  japanese: { label: 'Japanese', nativeLabel: '日本語', flag: '🇯🇵' },
 }
 
 export function SessionSidebar({
@@ -35,8 +26,6 @@ export function SessionSidebar({
   onToggle,
   onSelectSession,
   onNewSession,
-  onSessionsChanged,
-  onActiveSessionDeleted,
   onRenameSession,
   onDeleteSession,
   disabled,
@@ -81,12 +70,12 @@ export function SessionSidebar({
           {(['korean', 'japanese', 'english'] as Language[]).map((lang) => {
             const langSessions = grouped[lang]
             if (langSessions.length === 0) return null
-            const meta = LANGUAGE_META[lang]
+            const meta = LANGUAGES.find(l => l.value === lang)!
             return (
               <div key={lang}>
                 <div className="flex items-center gap-1.5 px-1 mb-1.5">
                   <span className="text-sm leading-none" aria-hidden="true">
-                    <img src={getFlagSvgUrl(meta.flag)} alt="" className="inline-block size-[1em] align-text-bottom" draggable={false} />
+                    <Flag emoji={meta.flag} />
                   </span>
                   <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{meta.nativeLabel}</span>
                 </div>
@@ -97,8 +86,6 @@ export function SessionSidebar({
                       session={s}
                       isActive={s.session_id === activeSessionId}
                       onSelect={onSelectSession}
-                      onSessionsChanged={onSessionsChanged}
-                      onActiveSessionDeleted={onActiveSessionDeleted}
                       onRename={onRenameSession}
                       onDelete={onDeleteSession}
                       disabled={disabled}

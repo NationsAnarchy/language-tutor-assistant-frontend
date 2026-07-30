@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { ArrowRight, RefreshCcw, CheckCircle2, LogOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getFlagSvgUrl } from '@/lib/twemoji'
 import { Button } from '@/components/ui/button'
+import { Flag } from '@/components/ui/flag'
 import {
   type Language,
   type Level,
@@ -12,6 +12,7 @@ import {
   type User,
   LANGUAGES,
   LEVELS,
+  LEVEL_LABEL,
 } from '@/lib/types'
 import { LinguaLogo } from '../auth/lingua-logo'
 
@@ -63,18 +64,13 @@ function LanguageCard({
           className="absolute top-2.5 right-2.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/25 leading-none"
           aria-label={`Existing ${sessionLevel} session`}
         >
-          {sessionLevel.charAt(0).toUpperCase() + sessionLevel.slice(1)}
+          {LEVEL_LABEL[sessionLevel]}
         </span>
       )}
 
       {/* Flag */}
       <span className="text-4xl leading-none" role="img" aria-label={`${language} flag`}>
-        <img
-          src={getFlagSvgUrl(flag)}
-          alt=""
-          className="inline-block size-[1em] align-text-bottom"
-          draggable={false}
-        />
+        <Flag emoji={flag} />
       </span>
 
       {/* Language names */}
@@ -247,9 +243,7 @@ export function LanguagePicker({ user, existingSessions, loading, onStart, onSta
                   <RefreshCcw className="size-4" aria-hidden="true" />
                   Continue {selectedLangMeta?.label}
                   <span className="opacity-70">·</span>
-                  {selectedLevel
-                    ? selectedLevel.charAt(0).toUpperCase() + selectedLevel.slice(1)
-                    : ''}
+                  {selectedLevel ? LEVEL_LABEL[selectedLevel] : ''}
                 </>
               ) : (
                 <>
