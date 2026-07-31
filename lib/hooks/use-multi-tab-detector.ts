@@ -23,50 +23,50 @@ type TabState = 'single' | 'multiple' | 'elected'
  */
 export function useMultiTabDetector() {
   const [tabState, setTabState] = useState<TabState>('single')
+  const [tabId] = useState(() => Math.random().toString(36).slice(2, 9))
   const channelRef = useRef<BroadcastChannel | null>(null)
-  const tabIdRef = useRef(Math.random().toString(36).slice(2, 9))
   const activeTabsRef = useRef<Set<string>>(new Set())
-  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const timeoutMapRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   /** Re-evaluate how many tabs are active and update state. */
   const evaluate = useCallback(() => {
     // Count tabs excluding self
-    const others = activeTabsRef.current.size - (activeTabsRef.current.has(tabIdRef.current) ? 1 : 0)
+    const others = activeTabsRef.current.size - (activeTabsRef.current.has(tabId) ? 1 : 0)
 
     if (others >= 1) {
       setTabState('multiple')
     } else {
       setTabState((prev) => (prev === 'multiple' ? 'single' : prev))
     }
-  }, [])
+  }, [tabId])
 
   /** Elect this tab as the active one. */
   const electThisTab = useCallback(() => {
     setTabState('elected')
-    channelRef.current?.postMessage({ type: 'elected', from: tabIdRef.current })
-  }, [])
+    channelRef.current?.postMessage({ type: 'elected', from: tabId })
+  }, [tabId])
 
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return
 
     const channel = new BroadcastChannel(CHANNEL_NAME)
     channelRef.current = channel
+    const timeoutMap = timeoutMapRef.current
 
     // Register a tab ID (from heartbeat or initial message)
     const registerTab = (id: string) => {
-      if (id === tabIdRef.current) return
+      if (id === tabId) return
       activeTabsRef.current.add(id)
       evaluate()
 
       // Clear any existing timeout for this tab and set a new one
-      const existing = timeoutMapRef.current.get(id)
+      const existing = timeoutMap.get(id)
       if (existing) clearTimeout(existing)
-      timeoutMapRef.current.set(
+      timeoutMap.set(
         id,
         setTimeout(() => {
           activeTabsRef.current.delete(id)
-          timeoutMapRef.current.delete(id)
+          timeoutMap.delete(id)
           evaluate()
         }, TAB_TIMEOUT),
       )
@@ -79,29 +79,29 @@ export function useMultiTabDetector() {
         registerTab(data.from)
       }
 
-      if (data?.type === 'elected' && data.from !== tabIdRef.current) {
+      if (data?.type === 'elected' && data.from !== tabId) {
         setTabState('multiple')
       }
     }
 
     // Broadcast heartbeat periodically
     const heartbeat = () => {
-      channel.postMessage({ type: 'heartbeat', from: tabIdRef.current })
+      channel.postMessage({ type: 'heartbeat', from: tabId })
     }
-    heartbeatRef.current = setInterval(heartbeat, HEARTBEAT_INTERVAL)
+    const heartbeatInterval = setInterval(heartbeat, HEARTBEAT_INTERVAL)
 
     // Send initial heartbeat immediately
     heartbeat()
 
     // Cleanup on unmount
     return () => {
-      if (heartbeatRef.current) clearInterval(heartbeatRef.current)
-      for (const t of timeoutMapRef.current.values()) clearTimeout(t)
-      timeoutMapRef.current.clear()
+      clearInterval(heartbeatInterval)
+      for (const timeout of timeoutMap.values()) clearTimeout(timeout)
+      timeoutMap.clear()
       channel.close()
       channelRef.current = null
     }
-  }, [evaluate])
+  }, [evaluate, tabId])
 
   return { tabState, electThisTab }
 }

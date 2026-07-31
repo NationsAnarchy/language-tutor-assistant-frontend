@@ -3,6 +3,14 @@ export type Level = 'beginner' | 'intermediate' | 'advanced'
 export type AudioState = 'idle' | 'loading' | 'playing' | 'paused'
 export type PlaybackSpeed = 'normal' | 'slow'
 
+export function isLanguage(value: unknown): value is Language {
+  return value === 'english' || value === 'korean' || value === 'japanese'
+}
+
+export function isLevel(value: unknown): value is Level {
+  return value === 'beginner' || value === 'intermediate' || value === 'advanced'
+}
+
 export interface User {
   name: string
   email: string

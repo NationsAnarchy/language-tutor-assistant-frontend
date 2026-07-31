@@ -30,7 +30,6 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     // Log to console for now; a future /api/client-errors endpoint can POST this.
-    // eslint-disable-next-line no-console
     console.error('[ErrorBoundary] Uncaught error:', error, info.componentStack)
   }
 

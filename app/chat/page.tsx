@@ -4,22 +4,16 @@ import { ChatScreen } from "@/components/chat/chat-screen";
 import { SessionSidebar } from "@/components/layout/session-sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  ApiError,
-  clearTokenCache,
   clearSessionCaches,
-  deleteSession,
-  getSession,
-  langFromBackend,
-  listSessions,
-  mapBackendSession,
-  mapChatHistory,
-  renameSession,
 } from "@/lib/api";
 import { audioManager } from "@/lib/audio-manager";
-import type { Language, Level, Message, Session } from "@/lib/types";
+import { useChatSessionNavigation } from "@/lib/hooks/use-chat-session-navigation";
+import { useChatSessionLoader } from "@/lib/hooks/use-chat-session-loader";
+import { useSessionList } from "@/lib/hooks/use-session-list";
+import { type Language, type Level, type Message } from "@/lib/types";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
 function ChatPageInner() {
   const { data: session, status, update: updateSession } = useSession();
@@ -31,95 +25,25 @@ function ChatPageInner() {
   const [level, setLevel] = useState<Level>("intermediate");
   const [sessionId, setSessionId] = useState<string | null>(sessionIdParam);
   const [initialMessages, setInitialMessages] = useState<Message[]>([]);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { sessions, refresh: refreshSessions, rename: renameSession, remove: removeSession } = useSessionList();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isAgentLoading, setIsAgentLoading] = useState(false);
-  const [switchingSession, setSwitchingSession] = useState(false);
-  const switchingRef = useRef(false);
-
-  // Load session data and all user sessions
-  const loadData = useCallback(async () => {
-    if (!sessionIdParam) {
-      router.replace("/language");
-      return;
-    }
-
-    // If switchToSession is already handling this, skip — it fetches the
-    // same data and updates state directly. Prevents a double fetch when
-    // pushState causes useSearchParams to re-evaluate (Issue #45 duplicate).
-    if (switchingRef.current) {
-      return;
-    }
-
-    try {
-      const [sessionData, sessionsList] = await Promise.all([
-        getSession(sessionIdParam),
-        listSessions(),
-      ]);
-
-      const history = mapChatHistory(sessionData.chat_history);
-
-      setInitialMessages(history);
-      setLanguage(langFromBackend(sessionData.language) as Language);
-      setLevel(sessionData.level as Level);
-      setSessionId(sessionIdParam);
-
-      setSessions(sessionsList.map(mapBackendSession));
-    } catch (err) {
-      // Only redirect on a true 404 — session doesn't exist
-      if (err instanceof ApiError && err.status === 404) {
-        router.replace("/language");
-        return;
-      }
-      // 401 (stale token), network errors, or other transient failures:
-      // don't boot the user out — the pageshow handler or forceReady
-      // timeout will retry once the session is revalidated. (Issue #36)
-    } finally {
-      setLoading(false);
-      // Session load complete — hide the switching indicator (Issue #44)
-      setSwitchingSession(false);
-      switchingRef.current = false;
-    }
-  }, [sessionIdParam, router]);
-
-  // Load data immediately on mount — don't wait for auth rehydration (Issue #36)
-  // The API calls are independently authenticated; if the session expired, loadData
-  // will throw and the catch handler redirects to /language.
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  // Detect BFCache restore (tab close/reopen) and rehydrate the page (Issue #36)
-  // When a page is restored from the back-forward cache, React effects don't
-  // re-fire, but the component was frozen with stale session state. We need
-  // three things: 1) force NextAuth to re-validate the session (updateSession),
-  // 2) clear the stale JWT token cache so the backend gets a fresh token,
-  // 3) reload backend data (loadData), 4) reset loading state.
-  useEffect(() => {
-    const handlePageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) {
-        setLoading(true);
-        // Clear stale JWT cache — the backend may reject the cached token
-        // after a BFCache restore, and we want a fresh one from /api/auth/token
-        clearTokenCache();
-        // Force NextAuth to re-fetch /api/auth/session, unfreezing its state,
-        // then reload backend data once the session is confirmed valid.
-        updateSession().then(() => loadData());
-      }
-    };
-    window.addEventListener("pageshow", handlePageShow);
-    return () => window.removeEventListener("pageshow", handlePageShow);
-  }, [loadData, updateSession]);
-
-  // Safety timeout: if either NextAuth status or loadData() hangs
-  // (e.g. after BFCache restore or slow backend), force-unblock the
-  // spinner after 5 seconds. (Issue #36)
-  const [forceReady, setForceReady] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setForceReady(true), 5_000);
-    return () => clearTimeout(timer);
+  const applyLoadedSession = useCallback((loaded: { sessionId: string; language: Language; level: Level; messages: Message[] }) => {
+    setInitialMessages(loaded.messages);
+    setLanguage(loaded.language);
+    setLevel(loaded.level);
+    setSessionId(loaded.sessionId);
   }, []);
+  const { switchingSession, switchingRef, switchToSession } = useChatSessionNavigation(router, applyLoadedSession);
+
+  const { loading, forceReady } = useChatSessionLoader({
+    sessionId: sessionIdParam,
+    router,
+    refreshSessions,
+    updateSession,
+    switchingRef,
+    onSessionLoaded: applyLoadedSession,
+  });
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -128,106 +52,19 @@ function ChatPageInner() {
   }, [status, router]);
 
   // Reload sessions list when returning from creating a new session
-  const refreshSessions = useCallback(async () => {
-    try {
-      const sessionsList = await listSessions();
-      setSessions(sessionsList.map(mapBackendSession));
-    } catch {
-      // silently fail
-    }
-  }, []);
-
-  /** Ref to skip pushState when handling a popstate event (back/forward). */
-  const isPopStateRef = useRef(false);
-
-  /** Client-side session switch — avoids full page re-mount (Issue #45).
-   *  Uses pushState so browser back/forward navigates through sessions. */
-  const switchToSession = useCallback(async (targetSessionId: string, fromPopState = false) => {
-    setSwitchingSession(true);
-    switchingRef.current = true;
-
-    try {
-      // Fetch session data (may return cached data for ~30s)
-      const sessionData = await getSession(targetSessionId);
-      const history = mapChatHistory(sessionData.chat_history);
-
-      // Update all state at once — ChatScreen re-renders with new data
-      setInitialMessages(history);
-      setLanguage(langFromBackend(sessionData.language) as Language);
-      setLevel(sessionData.level as Level);
-      setSessionId(targetSessionId);
-
-      // Push a new history entry so back/forward works between sessions.
-      // Skip pushState when this is a popstate-triggered switch (back/forward).
-      if (!fromPopState) {
-        window.history.pushState({ sessionId: targetSessionId }, '', `/chat?session=${targetSessionId}`);
-      }
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        router.replace("/language");
-      }
-    } finally {
-      setSwitchingSession(false);
-      switchingRef.current = false;
-    }
-  }, [router]);
-
-  /** Handle browser back/forward — reload data for the session from history state. */
-  const handlePopState = useCallback((event: PopStateEvent) => {
-    const state = event.state as { sessionId?: string } | null;
-    // Cancel any in-flight agent request
-    audioManager.stopAll();
-    if (state?.sessionId) {
-      switchToSession(state.sessionId, true);
-    } else {
-      // No state means we navigated back to before the first pushState
-      // which is the initial page load — reload from URL params
-      const params = new URLSearchParams(window.location.search);
-      const sid = params.get('session');
-      if (sid) {
-        switchToSession(sid, true);
-      } else {
-        router.push('/language');
-      }
-    }
-  }, [router, switchToSession]);
-
-  // Listen for back/forward navigation
-  useEffect(() => {
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [handlePopState]);
-
   /** Optimistic rename — update sidebar immediately, sync in background (Issue #46). */
   const handleRenameSession = useCallback(async (targetSessionId: string, newTitle: string) => {
     // Optimistic update
-    setSessions(prev => prev.map(s =>
-      s.session_id === targetSessionId ? { ...s, title: newTitle } : s
-    ));
-    // Fire backend call
-    const ok = await renameSession(targetSessionId, newTitle);
-    if (!ok) {
-      // Rollback on failure — refresh from backend
-      refreshSessions();
-    }
-  }, [refreshSessions]);
+    await renameSession(targetSessionId, newTitle);
+  }, [renameSession]);
 
   /** Optimistic delete — remove from sidebar immediately, sync in background (Issue #46). */
   const handleDeleteSession = useCallback(async (targetSessionId: string, wasActive: boolean) => {
-    // Optimistic remove from local state
-    setSessions(prev => prev.filter(s => s.session_id !== targetSessionId));
-
-    // Fire backend call
-    const ok = await deleteSession(targetSessionId);
-    if (!ok) {
-      // Rollback on failure — refresh from backend
-      refreshSessions();
-      return;
-    }
+    const { deleted, remaining } = await removeSession(targetSessionId);
+    if (!deleted) return;
 
     if (wasActive) {
       // Navigate to the most recent remaining session
-      const remaining = [...sessions].filter(s => s.session_id !== targetSessionId);
       const sorted = remaining
         .filter(s => s.session_id)
         .sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
@@ -237,7 +74,7 @@ function ChatPageInner() {
         router.push("/language");
       }
     }
-  }, [sessions, refreshSessions, router]);
+  }, [removeSession, router]);
 
   const handleSelectSession = (selectedSessionId: string) => {
     if (selectedSessionId === sessionId || switchingRef.current) return;

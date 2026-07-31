@@ -186,6 +186,14 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
 
   useEffect(() => () => cleanupElement(), [cleanupElement])
 
+  // A generated TTS response owns its blob URL. Release it when this player
+  // is replaced or unmounted; cached backend URLs are left untouched.
+  useEffect(() => {
+    return () => {
+      if (audioUrl?.startsWith('blob:')) URL.revokeObjectURL(audioUrl)
+    }
+  }, [audioUrl])
+
   const hasFailed = failure !== null
   const canRetry = hasFailed && isRetryable(failure)
   const isPermanentlyFailed = hasFailed && !isRetryable(failure)

@@ -7,169 +7,18 @@ import MDEditor, { commands } from "@uiw/react-md-editor";
 import "@uiw/react-md-editor/markdown-editor.css";
 import { Button } from "@/components/ui/button";
 import { TopBar } from "../layout/top-bar";
-import { ChatBubble } from "./chat-bubble";
-import { ChatBubbleError } from "./chat-bubble-error";
+import { ChatMessageList } from "./chat-message-list";
 import { ExercisePanel } from "./exercise-panel";
 import { MistakesPanel } from "./mistakes-panel";
 import {
   sendChatStream,
-  getSession,
-  synthesizeAudio,
-  invalidateSessionCache,
-  mapChatHistory,
-  handleApiError,
   ApiError,
 } from "@/lib/api";
 import type { Language, Level, User, Message } from "@/lib/types";
 import { CHAT_PLACEHOLDERS } from "@/lib/types";
+import { STARTER_PROMPTS, synthesizeExercisePrompt } from "./chat-helpers";
+import { useChatWorkflow } from "./use-chat-workflow";
 
-// Starter prompt suggestions per language
-const STARTER_PROMPTS: Record<Language, string[]> = {
-  korean: [
-    "안녕하세요 — introduce yourself",
-    "날씨에 대해 이야기해요",
-    "식당을 추천해주세요",
-  ],
-  japanese: [
-    "自己紹介をしてください",
-    "趣味について話しましょう",
-    "おすすめの場所を教えて",
-  ],
-  english: [
-    "Introduce yourself",
-    "Describe your daily routine",
-    "Talk about a hobby",
-  ],
-};
-
-/**
- * Return a localized "backend not connected" fallback message.
- */
-function demoFallback(language: Language): string {
-  if (language === "korean")
-    return "백엔드에 연결되지 않았어요. uvicorn app.main:app --reload 로 백엔드를 시작해 주세요.";
-  if (language === "japanese")
-    return "バックエンドに接続できませんでした。uvicorn app.main:app --reload でバックエンドを起動してください。";
-  return "Backend not connected. Start it with: uvicorn app.main:app --reload";
-}
-
-/**
- * Stream an agent reply and optionally synthesize audio for it.
- * Shared between sendMessage and handleExerciseSubmit to avoid duplicating
- * the placeholder + token-append + cache-invalidate + TTS flow.
- */
-async function streamAgentReply({
-  sessionId,
-  content,
-  signal,
-  language,
-  setMessages,
-  setIsLoading,
-  audioAbortRef,
-  setAudioLoadingId,
-  setAudioFailures,
-}: {
-  sessionId: string;
-  content: string;
-  signal?: AbortSignal;
-  language: Language;
-  setMessages: (updater: (prev: Message[]) => Message[]) => void;
-  setIsLoading: (loading: boolean) => void;
-  audioAbortRef: React.MutableRefObject<AbortController | null>;
-  setAudioLoadingId: (id: string | null) => void;
-  setAudioFailures: (
-    updater: (prev: Map<string, string>) => Map<string, string>,
-  ) => void;
-}): Promise<string> {
-  // Placeholder agent message — tokens stream into it
-  const msgId = (Date.now() + 1).toString();
-  const agentMsg: Message = {
-    id: msgId,
-    role: "agent",
-    content: "",
-    timestamp: new Date(),
-  };
-  setMessages((prev) => [...prev, agentMsg]);
-
-  const result = await sendChatStream(
-    sessionId,
-    content,
-    (event) => {
-      if (event.type === "token" && event.content) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === msgId ? { ...m, content: m.content + event.content } : m,
-          ),
-        );
-      }
-    },
-    signal,
-  );
-
-  invalidateSessionCache(sessionId);
-  setIsLoading(false);
-
-  // TTS: show loading indicator, synthesize in background
-  const audioController = new AbortController();
-  audioAbortRef.current = audioController;
-
-  setAudioLoadingId(msgId);
-  synthesizeAudio(sessionId, result.reply, audioController.signal)
-    .then((url) => {
-      if (audioController.signal.aborted) return;
-      setAudioLoadingId(null);
-      if (url) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === msgId ? { ...m, audioUrl: url } : m)),
-        );
-      }
-    })
-    .catch((audioErr) => {
-      if (audioController.signal.aborted) return;
-      setAudioLoadingId(null);
-      const hint =
-        audioErr instanceof ApiError
-          ? "Audio couldn't be generated right now."
-          : "Audio unavailable.";
-      setAudioFailures((prev) => new Map(prev).set(msgId, hint));
-    });
-
-  return result.reply;
-}
-
-/**
- * Synthesize audio for an exercise prompt (non-critical, silently ignore failures).
- */
-function synthesizeExercisePrompt({
-  sessionId,
-  text,
-  audioAbortRef,
-  setExerciseAudioUrl,
-}: {
-  sessionId: string;
-  text: string;
-  audioAbortRef: React.MutableRefObject<AbortController | null>;
-  setExerciseAudioUrl: (url: string) => void;
-}) {
-  const audioController = new AbortController();
-  audioAbortRef.current = audioController;
-  synthesizeAudio(sessionId, text, audioController.signal)
-    .then((url) => {
-      if (audioController.signal.aborted) return;
-      if (url) setExerciseAudioUrl(url);
-    })
-    .catch(() => {
-      // Audio for exercise prompt is non-critical — silently ignore failures
-    });
-}
-
-/** Per-message error state attached to a failed user message. */
-interface MessageError {
-  message: string;
-  retryable: boolean;
-  /** The original content to resend on retry. */
-  originalContent: string;
-}
 
 interface ChatScreenProps {
   user: User;
@@ -199,80 +48,32 @@ export function ChatScreen({
   sidebarOpen,
 }: ChatScreenProps) {
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [isExerciseDrawerOpen, setIsExerciseDrawerOpen] = useState(false);
   const [currentExercise, setCurrentExercise] = useState<
     { prompt: string; audioUrl?: string } | undefined
   >(undefined);
   const [isExerciseLoading, setIsExerciseLoading] = useState(false);
-  /** Map of messageId → error info for failed user messages. */
-  const [messageErrors, setMessageErrors] = useState<Map<string, MessageError>>(
-    new Map(),
-  );
-  /** Audio failure hints: messageId → hint text. */
-  const [audioFailures, setAudioFailures] = useState<Map<string, string>>(
-    new Map(),
-  );
   /** Exercise-panel-local error (shown inline, not as a toast). */
   const [exerciseError, setExerciseError] = useState<string | null>(null);
   /** Whether the mistakes review panel is visible. */
   const [showMistakes, setShowMistakes] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const audioAbortRef = useRef<AbortController | null>(null);
-  const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null);
+  const { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, dismissError } = useChatWorkflow({ sessionId, language, initialMessages, router });
 
-  // Cancel in-flight request when session changes or component unmounts (Issue #14)
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-      audioAbortRef.current?.abort();
-    };
-  }, [sessionId]);
+  useEffect(() => () => audioAbortRef.current?.abort(), [sessionId]);
 
   // Load initial messages when session changes (e.g., resuming after sign-out)
   // Always set — empty array is valid for a new session (fixes Issue #10).
   useEffect(() => {
-    setMessages(initialMessages);
-    // Clear per-message errors when switching sessions
-    setMessageErrors(new Map());
-    setAudioFailures(new Map());
     // Reset exercise state for the new conversation
     setCurrentExercise(undefined);
     setIsExerciseDrawerOpen(false);
     setIsExerciseLoading(false);
     setExerciseError(null);
   }, [initialMessages]);
-
-  // Fallback: if we have a sessionId but no messages, try loading history from backend.
-  // Keyed on sessionId so switching to a new (empty) session clears stale messages.
-  useEffect(() => {
-    if (!sessionId || sessionId === "demo-session") return;
-
-    // Check if initialMessages already covered this session
-    if (initialMessages.length > 0) return;
-
-    let cancelled = false;
-
-    getSession(sessionId)
-      .then((data) => {
-        if (cancelled) return;
-        const history = mapChatHistory(data.chat_history);
-        if (history.length > 0) {
-          setMessages(history);
-        }
-      })
-      .catch(() => {
-        /* ignore */
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId, initialMessages]);
 
   // Auto-scroll to bottom on new messages.
   // Use instant scroll during active streaming (tokens arrive faster than a smooth
@@ -293,92 +94,13 @@ export function ChatScreen({
     setInputValue(value || "");
   }, []);
 
-  /**
-   * Handle an ApiError: show toast for global events (auth, network),
-   * and return a user-friendly message for inline display.
-   */
-  const handleError = useCallback(
-    (err: unknown): { message: string; retryable: boolean } =>
-      handleApiError(err, router),
-    [router],
-  );
-
   const sendMessage = useCallback(
     async (content: string, retryOfId?: string) => {
       if (!content.trim()) return;
-
-      const userMsg: Message = {
-        id: retryOfId || Date.now().toString(),
-        role: "user",
-        content,
-        timestamp: new Date(),
-      };
-
-      // If retrying, remove the old error
-      if (retryOfId) {
-        setMessageErrors((prev) => {
-          const next = new Map(prev);
-          next.delete(retryOfId);
-          return next;
-        });
-        // Replace the old message in the list
-        setMessages((prev) =>
-          prev.map((m) => (m.id === retryOfId ? userMsg : m)),
-        );
-      } else {
-        setMessages((prev) => [...prev, userMsg]);
-        setInputValue("");
-      }
-
-      setIsLoading(true);
-
-      try {
-        if (!sessionId || sessionId === "demo-session") {
-          // Demo fallback when backend isn't available
-          await new Promise((r) => setTimeout(r, 1800));
-          const agentMsg: Message = {
-            id: (Date.now() + 1).toString(),
-            role: "agent",
-            content: demoFallback(language),
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, agentMsg]);
-        } else {
-          // Abort any previous in-flight request (Issue #14)
-          abortRef.current?.abort();
-          const controller = new AbortController();
-          abortRef.current = controller;
-
-          await streamAgentReply({
-            sessionId,
-            content,
-            signal: controller.signal,
-            language,
-            setMessages,
-            setIsLoading,
-            audioAbortRef,
-            setAudioLoadingId,
-            setAudioFailures,
-          });
-        }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          // User-initiated cancel (session switch) — don't show error
-          return;
-        }
-        const { message, retryable } = handleError(err);
-        setMessageErrors((prev) =>
-          new Map(prev).set(userMsg.id, {
-            message,
-            retryable,
-            originalContent: content,
-          }),
-        );
-      } finally {
-        setIsLoading(false);
-      }
+      if (!retryOfId) setInputValue("");
+      await submit(content, { retryOfId });
     },
-    [sessionId, language, handleError],
+    [submit],
   );
 
   const handleRetry = useCallback(
@@ -391,12 +113,8 @@ export function ChatScreen({
   );
 
   const handleDismissError = useCallback((messageId: string) => {
-    setMessageErrors((prev) => {
-      const next = new Map(prev);
-      next.delete(messageId);
-      return next;
-    });
-  }, []);
+    dismissError(messageId);
+  }, [dismissError]);
 
   const handleSend = useCallback(() => {
     if (!inputValue.trim() || isLoading) return;
@@ -421,50 +139,11 @@ export function ChatScreen({
   }, [handleSend]);
 
   const handleExerciseSubmit = async (answer: string) => {
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: answer,
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setIsLoading(true);
-    setIsExerciseDrawerOpen(false);
-
-    if (!sessionId || sessionId === "demo-session") {
-      // Demo fallback
-      await new Promise((r) => setTimeout(r, 1600));
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: "agent",
-          content:
-            "Backend not available — start it with: uvicorn app.main:app --reload",
-          timestamp: new Date(),
-        },
-      ]);
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      await streamAgentReply({
-        sessionId,
-        content: answer,
-        language,
-        setMessages,
-        setIsLoading,
-        audioAbortRef,
-        setAudioLoadingId,
-        setAudioFailures,
-      });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      handleError(err);
-    } finally {
-      setIsLoading(false);
-    }
+    await submit(answer, {
+      beforeSubmit: () => setIsExerciseDrawerOpen(false),
+      onError: setExerciseError,
+      demoResponse: "Backend not available — start it with: uvicorn app.main:app --reload",
+    });
   };
 
   const handleRequestNewExercise = async () => {
@@ -580,36 +259,7 @@ export function ChatScreen({
           </div>
         </main>
       ) : (
-        <main
-          className="flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-5"
-          aria-label="Conversation"
-          aria-live="polite"
-          aria-atomic="false"
-        >
-          {/* Messages */}
-          {messages.map((msg) => (
-            <div key={msg.id}>
-              <ChatBubble
-                message={msg}
-                isAudioLoading={audioLoadingId === msg.id}
-                audioFailureHint={audioFailures.get(msg.id)}
-              />
-              {messageErrors.has(msg.id) && (
-                <ChatBubbleError
-                  message={messageErrors.get(msg.id)!.message}
-                  onRetry={
-                    messageErrors.get(msg.id)!.retryable
-                      ? () => handleRetry(msg.id)
-                      : undefined
-                  }
-                  onDismiss={() => handleDismissError(msg.id)}
-                />
-              )}
-            </div>
-          ))}
-
-          <div ref={messagesEndRef} />
-        </main>
+        <ChatMessageList messages={messages} audioLoadingId={audioLoadingId} audioFailures={audioFailures} errors={messageErrors} onRetry={handleRetry} onDismiss={handleDismissError} endRef={messagesEndRef} />
       )}
 
       {/* Mistakes review panel — collapsible inline section */}
@@ -626,7 +276,7 @@ export function ChatScreen({
                 Close
               </button>
             </div>
-            <MistakesPanel sessionId={sessionId} />
+            <MistakesPanel sessionId={sessionId} onRequestExercise={sendMessage} />
           </div>
         </div>
       )}

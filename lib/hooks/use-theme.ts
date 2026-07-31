@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { writeStoredValue } from '@/lib/browser-storage'
 
 type Theme = 'light' | 'dark'
 
@@ -37,7 +38,7 @@ export function useTheme() {
   const toggle = useCallback(() => {
     setThemeState((prev) => {
       const next = prev === 'dark' ? 'light' : 'dark'
-      localStorage.setItem(STORAGE_KEY, next)
+      writeStoredValue(localStorage, STORAGE_KEY, next)
       return next
     })
   }, [])

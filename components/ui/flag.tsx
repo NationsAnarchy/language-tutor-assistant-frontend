@@ -12,6 +12,9 @@ interface FlagProps {
  */
 export function Flag({ emoji, className }: FlagProps) {
   return (
+    // The source is a small, externally hosted SVG generated from an emoji;
+    // Next image optimization does not benefit this presentation-only asset.
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={getFlagSvgUrl(emoji)}
       alt=""

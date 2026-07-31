@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Languages, BookOpen, Mic, Type } from 'lucide-react'
+import { AlertTriangle, Languages, BookOpen, Mic, Type, Sparkles } from 'lucide-react'
 import { getMistakes, MistakeEntry } from '@/lib/api'
 import { Spinner } from '@/components/ui/spinner'
 
 interface MistakesPanelProps {
   sessionId: string
+  onRequestExercise?: (prompt: string) => void
 }
 
 const TYPE_ICONS: Record<MistakeEntry['type'], typeof Languages> = {
@@ -43,7 +44,7 @@ function groupByType(mistakes: MistakeEntry[]): Record<MistakeEntry['type'], Mis
   return grouped as Record<MistakeEntry['type'], MistakeEntry[]>
 }
 
-export function MistakesPanel({ sessionId }: MistakesPanelProps) {
+export function MistakesPanel({ sessionId, onRequestExercise }: MistakesPanelProps) {
   const [mistakes, setMistakes] = useState<MistakeEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -93,11 +94,23 @@ export function MistakesPanel({ sessionId }: MistakesPanelProps) {
 
   const grouped = groupByType(mistakes)
 
-  return (
+    return (
     <div className="space-y-3 p-3">
-      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-        {mistakes.length} mistake{mistakes.length !== 1 ? 's' : ''} to review
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+          {mistakes.length} mistake{mistakes.length !== 1 ? 's' : ''} to review
+        </p>
+        {onRequestExercise && (
+          <button
+            type="button"
+            onClick={() => onRequestExercise("Please create a practice exercise based on my recent mistakes.")}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors"
+          >
+            <Sparkles className="size-3" />
+            Practice These
+          </button>
+        )}
+      </div>
       {(['grammar', 'vocabulary', 'pronunciation', 'spelling'] as const).map((type) => {
         const items = grouped[type]
         if (items.length === 0) return null

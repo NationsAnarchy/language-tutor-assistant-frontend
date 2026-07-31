@@ -56,7 +56,7 @@ export function MultiTabOverlay({ onElectThisTab }: MultiTabOverlayProps) {
           <div className="text-xs text-muted-foreground leading-relaxed">
             <p className="font-medium text-foreground mb-1">What to do:</p>
             <ol className="list-decimal pl-4 space-y-1">
-              <li>Click <strong>"Use this tab"</strong> above to make this the active window.</li>
+              <li>Click <strong>&quot;Use this tab&quot;</strong> above to make this the active window.</li>
               <li>Close the other tab — you can identify it by the warning screen.</li>
               <li>Only one tab will remain active at a time.</li>
             </ol>
