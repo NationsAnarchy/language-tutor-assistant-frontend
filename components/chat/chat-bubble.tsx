@@ -21,6 +21,7 @@ interface ChatBubbleProps {
 export const ChatBubble = memo(function ChatBubble({ message, isAudioLoading, audioFailureHint, onRetryAudio }: ChatBubbleProps) {
   const isUser = message.role === 'user'
   const hasCorrections = message.segments?.some((s) => s.type === 'correction')
+  const canGenerateAudio = Boolean(message.content && onRetryAudio)
 
   if (isUser) {
     return (
@@ -82,16 +83,16 @@ export const ChatBubble = memo(function ChatBubble({ message, isAudioLoading, au
             <AudioPlayButton audioUrl={message.audioUrl} className="shrink-0" />
           ) : isAudioLoading ? (
             <Spinner size="sm" className="shrink-0" />
-          ) : audioFailureHint ? (
+          ) : audioFailureHint || canGenerateAudio ? (
             <button
               type="button"
               onClick={onRetryAudio}
               className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground px-1.5 py-1 rounded-md bg-muted/60 hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              title={audioFailureHint}
-              aria-label="Retry audio generation"
+              title={audioFailureHint || 'Generate audio for this message'}
+              aria-label={audioFailureHint ? 'Retry audio generation' : 'Generate audio for this message'}
             >
               <RefreshCw className="size-3" aria-hidden="true" />
-              Retry audio
+              {audioFailureHint ? 'Retry audio' : 'Generate audio'}
             </button>
           ) : null}
         </div>
