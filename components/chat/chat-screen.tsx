@@ -63,7 +63,7 @@ export function ChatScreen({
   const [showMistakes, setShowMistakes] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, requestPractice, dismissError } = useChatWorkflow({ sessionId, language, initialMessages, router });
+  const { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, requestPractice, retryAudio, dismissError } = useChatWorkflow({ sessionId, language, initialMessages, router });
 
   // Load initial messages when session changes (e.g., resuming after sign-out)
   // Always set — empty array is valid for a new session (fixes Issue #10).
@@ -226,7 +226,7 @@ export function ChatScreen({
           </div>
         </main>
       ) : (
-        <ChatMessageList messages={messages} audioLoadingId={audioLoadingId} audioFailures={audioFailures} errors={messageErrors} onRetry={handleRetry} onDismiss={handleDismissError} endRef={messagesEndRef} />
+        <ChatMessageList messages={messages} audioLoadingId={audioLoadingId} audioFailures={audioFailures} errors={messageErrors} onRetry={handleRetry} onRetryAudio={retryAudio} onDismiss={handleDismissError} endRef={messagesEndRef} />
       )}
 
       {/* Mistakes review panel — collapsible inline section */}

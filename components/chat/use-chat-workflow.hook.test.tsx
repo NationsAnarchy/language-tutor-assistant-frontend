@@ -180,6 +180,26 @@ describe('useChatWorkflow session changes', () => {
     expect(workflow.audioFailures.get(agentMessage.id)).toBe('Audio unavailable.')
   })
 
+  it('retries audio for an existing tutor message without submitting another chat turn', async () => {
+    const message: Message = { id: 'agent-1', role: 'agent', content: 'Tutor reply', timestamp: new Date() }
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+    vi.mocked(api.synthesizeAudio).mockResolvedValue('blob:retried-audio')
+
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[message]} onWorkflow={captureWorkflow} />) })
+    await act(async () => {
+      await workflow.retryAudio(message.id)
+      await Promise.resolve()
+    })
+
+    expect(api.synthesizeAudio).toHaveBeenCalledWith('session-1', 'Tutor reply', expect.any(AbortSignal))
+    expect(api.sendChatStream).not.toHaveBeenCalled()
+    expect(workflow.messages[0].audioUrl).toBe('blob:retried-audio')
+    expect(workflow.audioFailures.has(message.id)).toBe(false)
+  })
+
   it('sends an explicit practice type through the shared stream and hands its audio to the caller once', async () => {
     container = document.createElement('div')
     document.body.appendChild(container)

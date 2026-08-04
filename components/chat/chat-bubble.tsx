@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -14,9 +15,10 @@ interface ChatBubbleProps {
   message: Message
   isAudioLoading?: boolean
   audioFailureHint?: string
+  onRetryAudio?: () => void
 }
 
-export const ChatBubble = memo(function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBubbleProps) {
+export const ChatBubble = memo(function ChatBubble({ message, isAudioLoading, audioFailureHint, onRetryAudio }: ChatBubbleProps) {
   const isUser = message.role === 'user'
   const hasCorrections = message.segments?.some((s) => s.type === 'correction')
 
@@ -81,9 +83,16 @@ export const ChatBubble = memo(function ChatBubble({ message, isAudioLoading, au
           ) : isAudioLoading ? (
             <Spinner size="sm" className="shrink-0" />
           ) : audioFailureHint ? (
-            <span className="shrink-0 inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 px-1.5 py-0.5 rounded-md bg-muted/40" title={audioFailureHint} aria-label={audioFailureHint}>
-              🔇
-            </span>
+            <button
+              type="button"
+              onClick={onRetryAudio}
+              className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground px-1.5 py-1 rounded-md bg-muted/60 hover:bg-accent hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title={audioFailureHint}
+              aria-label="Retry audio generation"
+            >
+              <RefreshCw className="size-3" aria-hidden="true" />
+              Retry audio
+            </button>
           ) : null}
         </div>
       </div>

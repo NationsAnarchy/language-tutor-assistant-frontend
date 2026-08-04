@@ -5,12 +5,13 @@ import { ChatBubbleError } from './chat-bubble-error'
 
 export interface MessageError { message: string; retryable: boolean }
 
-export function ChatMessageList({ messages, audioLoadingId, audioFailures, errors, onRetry, onDismiss, endRef }: {
+export function ChatMessageList({ messages, audioLoadingId, audioFailures, errors, onRetry, onRetryAudio, onDismiss, endRef }: {
   messages: Message[]
   audioLoadingId: string | null
   audioFailures: Map<string, string>
   errors: Map<string, MessageError>
   onRetry: (id: string) => void
+  onRetryAudio: (id: string) => void
   onDismiss: (id: string) => void
   endRef: RefObject<HTMLDivElement | null>
 }) {
@@ -18,7 +19,7 @@ export function ChatMessageList({ messages, audioLoadingId, audioFailures, error
     {messages.map((message) => {
       const error = errors.get(message.id)
       return <div key={message.id}>
-        <ChatBubble message={message} isAudioLoading={audioLoadingId === message.id} audioFailureHint={audioFailures.get(message.id)} />
+        <ChatBubble message={message} isAudioLoading={audioLoadingId === message.id} audioFailureHint={audioFailures.get(message.id)} onRetryAudio={() => onRetryAudio(message.id)} />
         {error && <ChatBubbleError message={error.message} onRetry={error.retryable ? () => onRetry(message.id) : undefined} onDismiss={() => onDismiss(message.id)} />}
       </div>
     })}

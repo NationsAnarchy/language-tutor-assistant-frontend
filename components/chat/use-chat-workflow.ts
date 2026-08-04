@@ -102,6 +102,32 @@ export function useChatWorkflow({ sessionId, language, initialMessages, router }
     }
     return submit(prompts[language][type], { ...options, practiceType: type })
   }, [language, submit])
+  const retryAudio = useCallback(async (messageId: string) => {
+    if (!sessionId || sessionId === 'demo-session') return false
+    const message = messages.find((candidate) => candidate.id === messageId && candidate.role === 'agent')
+    if (!message?.content) return false
+
+    const operation = operationRef.current
+    const controller = new AbortController()
+    audioRef.current = controller
+    setAudioFailures((previous) => { const next = new Map(previous); next.delete(messageId); return next })
+    setAudioLoadingId(messageId)
+    try {
+      const url = await synthesizeAudio(sessionId, message.content, controller.signal)
+      if (controller.signal.aborted || operationRef.current !== operation) return false
+      if (url) {
+        objectUrlsRef.current.add(url)
+        setMessages((previous) => previous.map((candidate) => candidate.id === messageId ? { ...candidate, audioUrl: url } : candidate))
+      }
+      return Boolean(url)
+    } catch (error) {
+      if (controller.signal.aborted || operationRef.current !== operation) return false
+      setAudioFailures((previous) => new Map(previous).set(messageId, error instanceof ApiError ? "Audio couldn't be generated right now." : 'Audio unavailable.'))
+      return false
+    } finally {
+      if (operationRef.current === operation) setAudioLoadingId((current) => current === messageId ? null : current)
+    }
+  }, [messages, sessionId])
   const dismissError = useCallback((messageId: string) => setMessageErrors((previous) => { const next = new Map(previous); next.delete(messageId); return next }), [])
-  return { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, requestPractice, dismissError }
+  return { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, requestPractice, retryAudio, dismissError }
 }
