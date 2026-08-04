@@ -6,9 +6,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * onKeyDown handler: submit on Enter (ignoring Shift+Enter for new line,
- * and ignoring keydown during IME composition).
- * Returns true if the event was handled (Enter pressed), false otherwise.
+ * onKeyDown handler: submit on Cmd/Ctrl+Enter (macOS uses the Cmd ⌘ key,
+ * other platforms use Ctrl). Plain Enter and Shift+Enter both fall through
+ * to the textarea default (insert a newline), which is also IME-safe because
+ * modifier-qualified keypresses are not absorbed by IME composition.
+ * Returns true if the event was handled (modifier+Enter pressed), false otherwise.
  */
 export function handleEnterKey(
   e: React.KeyboardEvent<HTMLTextAreaElement>,
@@ -16,9 +18,8 @@ export function handleEnterKey(
 ): boolean {
   if (
     e.key === 'Enter' &&
-    !e.shiftKey &&
-    !e.nativeEvent.isComposing &&
-    !(e.keyCode === 229)
+    (e.metaKey || e.ctrlKey) &&
+    !e.altKey
   ) {
     e.preventDefault()
     onSubmit()

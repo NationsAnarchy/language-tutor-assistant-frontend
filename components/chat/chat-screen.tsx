@@ -121,15 +121,24 @@ export function ChatScreen({
     sendMessage(inputValue);
   }, [inputValue, isLoading, sendMessage]);
 
-  // Ref to wrap MDEditor for Shift+Enter keyboard capture
+  // Ref to wrap MDEditor for Cmd/Ctrl+Enter keyboard capture
   const editorWrapRef = useRef<HTMLDivElement>(null);
 
-  // Shift+Enter to send, Enter for new line
+  // Cmd/Ctrl+Enter to send, Enter & Shift+Enter for new line (IME-safe,
+  // because modifier-qualified keypresses bypass IME composition)
   useEffect(() => {
     const container = editorWrapRef.current;
     if (!container) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && e.shiftKey && !e.ctrlKey && !e.altKey) {
+      // Match handleEnterKey semantics (lib/utils.ts): Cmd (mac) or Ctrl
+      // (other platforms) + Enter submits. Plain Enter and Shift+Enter fall
+      // through to the textarea default (newline), so IME confirm with Enter
+      // never accidentally sends.
+      if (
+        e.key === "Enter" &&
+        (e.metaKey || e.ctrlKey) &&
+        !e.altKey
+      ) {
         e.preventDefault();
         handleSend();
       }
@@ -315,7 +324,7 @@ export function ChatScreen({
           </Button>
         </div>
         <p className="text-center text-[11px] text-muted-foreground mt-2">
-          <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Shift+Enter</kbd> to send
+          <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">⌘/Ctrl+Enter</kbd> to send
           {" "}·{" "}
           <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Enter</kbd> for new line
           {" "}· Markdown supported
