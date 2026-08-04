@@ -7,7 +7,7 @@ import { Spinner } from '@/components/ui/spinner'
 
 interface MistakesPanelProps {
   sessionId: string
-  onRequestExercise?: (prompt: string) => void
+  onRequestPractice?: () => void
 }
 
 const TYPE_ICONS: Record<MistakeEntry['type'], typeof Languages> = {
@@ -44,7 +44,7 @@ function groupByType(mistakes: MistakeEntry[]): Record<MistakeEntry['type'], Mis
   return grouped as Record<MistakeEntry['type'], MistakeEntry[]>
 }
 
-export function MistakesPanel({ sessionId, onRequestExercise }: MistakesPanelProps) {
+export function MistakesPanel({ sessionId, onRequestPractice }: MistakesPanelProps) {
   const [mistakes, setMistakes] = useState<MistakeEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -100,10 +100,10 @@ export function MistakesPanel({ sessionId, onRequestExercise }: MistakesPanelPro
         <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
           {mistakes.length} mistake{mistakes.length !== 1 ? 's' : ''} to review
         </p>
-        {onRequestExercise && (
+        {onRequestPractice && (
           <button
             type="button"
-            onClick={() => onRequestExercise("Please create a practice exercise based on my recent mistakes.")}
+            onClick={onRequestPractice}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-primary bg-primary/10 hover:bg-primary/15 transition-colors"
           >
             <Sparkles className="size-3" />

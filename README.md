@@ -37,7 +37,7 @@ AUTH_GITHUB_ID=your-github-client-id
 AUTH_GITHUB_SECRET=your-github-client-secret
 
 # Backend API URL
-NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+BACKEND_URL=http://localhost:8000
 ```
 
 ## Screens
@@ -135,7 +135,7 @@ The in-memory cache for individual session data (chat history) enables instant s
 
 ### API Proxy (CORS)
 
-On Vercel, all API calls go through a same-origin proxy at `/api/proxy/[...path]`:
+All browser API calls go through a same-origin proxy at `/api/proxy/[...path]`:
 
 ```
 Browser → /api/proxy/session → Railway backend
@@ -150,9 +150,9 @@ The proxy handles both response types:
 - **JSON endpoints** (`/session`, `/chat`, `/sessions`, `/session/{id}/mistakes`) → proxied as text with `application/json`
 - **Binary endpoints** (`/audio/...`, `/session/{id}/tts` POST) → proxied as `ArrayBuffer` preserving content-type and content-length. TTS POST now also forwards `Content-Type: application/json` since it sends a JSON body.
 
-The `resolveURL()` function in `lib/api/index.ts` decides the target:
-- **Locally** (`localhost`) → direct backend URL
-- **On Vercel** → proxy path (`/api/proxy/...`)
+The browser API façade always resolves to `/api/proxy/...`, including local
+development. `BACKEND_URL` is server-only and is read solely by the Next Route
+Handler, so the browser never receives or contacts the FastAPI origin directly.
 
 ### Audio Pipeline
 
@@ -318,7 +318,7 @@ Set these environment variables in the Vercel dashboard:
 
 | Variable | Value |
 |----------|-------|
-| `NEXT_PUBLIC_BACKEND_URL` | `https://your-backend.up.railway.app` |
+| `BACKEND_URL` | Server-only FastAPI origin, e.g. `https://your-backend.up.railway.app` |
 | `AUTH_SECRET` | Generate with `openssl rand -base64 32` |
 | `AUTH_URL` | `https://your-app.vercel.app` |
 | `AUTH_GOOGLE_ID` | Your Google OAuth client ID |

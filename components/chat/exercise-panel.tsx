@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { RefreshCcw, Send, BookOpen, Loader2, AlertCircle, X } from 'lucide-react'
+import { RefreshCcw, Send, BookOpen, Loader2, AlertCircle, CheckCircle2, CircleX, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -9,15 +9,21 @@ import { AudioPlayButton } from '../audio/audio-play-button'
 import { cn, handleEnterKey } from '@/lib/utils'
 import { markdownComponents } from '../ui/markdown-config'
 import { ANSWER_PLACEHOLDERS, type Language } from '@/lib/types'
+import { type PracticeType } from '@/lib/api'
+import { PracticeModePicker } from './practice-mode-picker'
 
 interface ExercisePanelProps {
   language: Language
   onSubmitAnswer: (answer: string) => void
   onRequestNew: () => void
+  practiceType: PracticeType
+  onPracticeTypeChange: (type: PracticeType) => void
   isLoading: boolean
   currentExercise?: {
     prompt: string
     audioUrl?: string
+    feedback?: string
+    feedbackAudioUrl?: string
   }
   /** Error message to display inline (e.g. from failed exercise generation). */
   error?: string | null
@@ -33,6 +39,8 @@ export function ExercisePanel({
   language,
   onSubmitAnswer,
   onRequestNew,
+  practiceType,
+  onPracticeTypeChange,
   isLoading,
   currentExercise,
   error,
@@ -74,7 +82,8 @@ export function ExercisePanel({
     setAnswer('')
   }
 
-  const canSubmit = !!answer.trim() && !!currentExercise && !isLoading
+  const canSubmit = !!answer.trim() && !!currentExercise && !currentExercise.feedback && !isLoading
+  const feedbackIsCorrect = currentExercise?.feedback?.startsWith('Correct!')
 
   return (
     <>
@@ -103,6 +112,7 @@ export function ExercisePanel({
           <div className="flex items-center gap-2">
             <BookOpen className="size-3.5 text-muted-foreground" aria-hidden="true" />
             <h3 className="text-sm font-semibold text-foreground">Exercise</h3>
+            <span className="text-xs text-muted-foreground capitalize">{practiceType === 'mistake_review' ? 'Recent mistakes' : practiceType}</span>
             {isLoading && (
               <Loader2 className="size-3.5 text-muted-foreground animate-spin" aria-hidden="true" />
             )}
@@ -151,23 +161,49 @@ export function ExercisePanel({
 
         {/* Scrollable content area */}
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-3">
+          <div className="mb-3">
+            <PracticeModePicker value={practiceType} onChange={onPracticeTypeChange} disabled={isLoading} />
+          </div>
           {/* Exercise prompt card */}
           {currentExercise ? (
-            <div
-              className="rounded-xl border border-border bg-background px-4 py-3.5 flex gap-3 items-start shadow-xs"
-              role="region"
-              aria-label="Exercise prompt"
-            >
-              <div className="flex-1 min-w-0 text-sm text-foreground leading-relaxed">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {currentExercise.prompt}
-                </ReactMarkdown>
+            <div className="space-y-3">
+              <div
+                className="rounded-xl border border-border bg-background px-4 py-3.5 flex gap-3 items-start shadow-xs"
+                role="region"
+                aria-label="Exercise prompt"
+              >
+                <div className="flex-1 min-w-0 text-sm text-foreground leading-relaxed">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                    {currentExercise.prompt}
+                  </ReactMarkdown>
+                </div>
+                {currentExercise.audioUrl && (
+                  <AudioPlayButton
+                    audioUrl={currentExercise.audioUrl}
+                    className="shrink-0 mt-0.5"
+                  />
+                )}
               </div>
-              {currentExercise.audioUrl && (
-                <AudioPlayButton
-                  audioUrl={currentExercise.audioUrl}
-                  className="shrink-0 mt-0.5"
-                />
+              {currentExercise.feedback && (
+                <div
+                  className={cn(
+                    'rounded-xl border px-4 py-3.5 text-sm leading-relaxed shadow-xs',
+                    feedbackIsCorrect ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/5',
+                  )}
+                  role="status"
+                  aria-label={feedbackIsCorrect ? 'Correct answer feedback' : 'Answer feedback'}
+                >
+                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold">
+                    {feedbackIsCorrect ? <CheckCircle2 className="size-4 text-emerald-600" aria-hidden="true" /> : <CircleX className="size-4 text-amber-600" aria-hidden="true" />}
+                    {feedbackIsCorrect ? 'Correct' : 'Keep practicing'}
+                  </div>
+                  <div className="markdown-agent text-foreground">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                      {currentExercise.feedback}
+                    </ReactMarkdown>
+                  </div>
+                  {currentExercise.feedbackAudioUrl && <AudioPlayButton audioUrl={currentExercise.feedbackAudioUrl} className="mt-2" />}
+                </div>
               )}
             </div>
           ) : (
@@ -199,26 +235,32 @@ export function ExercisePanel({
 
         {/* Answer input + submit */}
         <div className="flex gap-2.5 items-end px-4 pb-4 pt-2 border-t border-border/60 shrink-0">
-          <textarea
-            ref={textareaRef}
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            onKeyDown={(e) => handleEnterKey(e, handleSubmit)}
-            placeholder={ANSWER_PLACEHOLDERS[language]}
-            rows={2}
-            disabled={!currentExercise || isLoading}
-            aria-label="Your answer"
-            className="flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all disabled:opacity-50 leading-relaxed shadow-xs"
-          />
-          <Button
-            size="sm"
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            className="h-19 w-10 p-0 rounded-xl shrink-0 flex-col gap-1"
-            aria-label="Submit answer"
-          >
-            <Send className="size-4" aria-hidden="true" />
-          </Button>
+          {currentExercise?.feedback ? (
+            <p className="flex-1 text-sm text-muted-foreground">Choose <span className="font-medium text-foreground">New exercise</span> when you&apos;re ready for another question.</p>
+          ) : (
+            <>
+              <textarea
+                ref={textareaRef}
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                onKeyDown={(e) => handleEnterKey(e, handleSubmit)}
+                placeholder={ANSWER_PLACEHOLDERS[language]}
+                rows={2}
+                disabled={!currentExercise || isLoading}
+                aria-label="Your answer"
+                className="flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all disabled:opacity-50 leading-relaxed shadow-xs"
+              />
+              <Button
+                size="sm"
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                className="h-19 w-10 p-0 rounded-xl shrink-0 flex-col gap-1"
+                aria-label="Submit answer"
+              >
+                <Send className="size-4" aria-hidden="true" />
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </>

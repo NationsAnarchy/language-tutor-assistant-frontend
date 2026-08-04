@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ApiError, classifyError, handleApiError, langFromBackend, langToBackend, mapBackendSession, sendChatStream } from './index'
+import { ApiError, classifyError, handleApiError, langFromBackend, langToBackend, mapBackendSession, sendChatStream, type PracticeType } from './index'
 
 describe('API mapping boundary', () => {
   it('maps known language codes and preserves unknown values', () => {
@@ -23,5 +23,7 @@ describe('API mapping boundary', () => {
     expect(ApiError).toBeTypeOf('function')
     expect(handleApiError).toBeTypeOf('function')
     expect(sendChatStream).toBeTypeOf('function')
+    const type: PracticeType = 'mistake_review'
+    expect(type).toBe('mistake_review')
   })
 })

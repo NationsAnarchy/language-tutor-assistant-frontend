@@ -46,6 +46,7 @@ describe('useChatWorkflow session changes', () => {
   afterEach(async () => {
     await act(async () => root?.unmount())
     container?.remove()
+    vi.restoreAllMocks()
     emitToken = undefined
     rejectStream = undefined
     streamSignal = undefined
@@ -103,6 +104,46 @@ describe('useChatWorkflow session changes', () => {
     expect(api.invalidateSessionCache).toHaveBeenCalledWith('session-1')
   })
 
+  it('releases generated audio URLs exactly once when the session changes', async () => {
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+    vi.mocked(api.sendChatStream).mockResolvedValue({ reply: 'Tutor reply', intent: 'chat' })
+    vi.mocked(api.synthesizeAudio).mockResolvedValue('blob:session-one')
+
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    await act(async () => {
+      await workflow.submit('Hi')
+      await Promise.resolve()
+    })
+    await act(async () => { root.render(<Harness sessionId="session-2" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1)
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:session-one')
+  })
+
+  it('releases generated audio URLs exactly once when the workflow unmounts', async () => {
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+    vi.mocked(api.sendChatStream).mockResolvedValue({ reply: 'Tutor reply', intent: 'chat' })
+    vi.mocked(api.synthesizeAudio).mockResolvedValue('blob:unmount')
+
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    await act(async () => {
+      await workflow.submit('Hi')
+      await Promise.resolve()
+    })
+    await act(async () => root.unmount())
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1)
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:unmount')
+  })
+
   it('attaches a retryable inline error when streaming fails', async () => {
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -137,5 +178,30 @@ describe('useChatWorkflow session changes', () => {
     expect(workflow.isLoading).toBe(false)
     expect(agentMessage.content).toBe('')
     expect(workflow.audioFailures.get(agentMessage.id)).toBe('Audio unavailable.')
+  })
+
+  it('sends an explicit practice type through the shared stream and hands its audio to the caller once', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+    const onComplete = vi.fn()
+    const onAudio = vi.fn()
+    vi.mocked(api.sendChatStream).mockResolvedValue({ reply: 'Practice prompt', intent: 'exercise_request' })
+    vi.mocked(api.synthesizeAudio).mockResolvedValue('blob:practice')
+
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    await act(async () => {
+      await workflow.requestPractice('mistake_review', { onComplete, onAudio })
+      await Promise.resolve()
+    })
+
+    expect(api.sendChatStream).toHaveBeenCalledWith(
+      'session-1', expect.stringContaining('recent mistakes'), expect.any(Function), expect.any(AbortSignal),
+      { practiceType: 'mistake_review' },
+    )
+    expect(onComplete).toHaveBeenCalledWith('Practice prompt')
+    expect(api.synthesizeAudio).toHaveBeenCalledTimes(1)
+    expect(onAudio).toHaveBeenCalledWith('blob:practice')
   })
 })

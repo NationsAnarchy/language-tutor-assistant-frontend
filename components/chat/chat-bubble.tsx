@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -15,7 +16,7 @@ interface ChatBubbleProps {
   audioFailureHint?: string
 }
 
-export function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBubbleProps) {
+export const ChatBubble = memo(function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBubbleProps) {
   const isUser = message.role === 'user'
   const hasCorrections = message.segments?.some((s) => s.type === 'correction')
 
@@ -88,4 +89,4 @@ export function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBu
       </div>
     </div>
   )
-}
+})

@@ -1,23 +1,24 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Send, BookOpen, Sparkles, Loader2, AlertTriangle } from "lucide-react";
-import MDEditor, { commands } from "@uiw/react-md-editor";
-import "@uiw/react-md-editor/markdown-editor.css";
 import { Button } from "@/components/ui/button";
 import { TopBar } from "../layout/top-bar";
 import { ChatMessageList } from "./chat-message-list";
 import { ExercisePanel } from "./exercise-panel";
 import { MistakesPanel } from "./mistakes-panel";
-import {
-  sendChatStream,
-  ApiError,
-} from "@/lib/api";
+import type { PracticeType } from "@/lib/api";
 import type { Language, Level, User, Message } from "@/lib/types";
 import { CHAT_PLACEHOLDERS } from "@/lib/types";
-import { STARTER_PROMPTS, synthesizeExercisePrompt } from "./chat-helpers";
+import { STARTER_PROMPTS } from "./chat-helpers";
 import { useChatWorkflow } from "./use-chat-workflow";
+
+const MarkdownEditor = dynamic(() => import('./markdown-editor'), {
+  ssr: false,
+  loading: () => <div className="h-32 p-3 text-sm text-muted-foreground" role="status">Loading message editor…</div>,
+})
 
 
 interface ChatScreenProps {
@@ -49,21 +50,20 @@ export function ChatScreen({
 }: ChatScreenProps) {
   const router = useRouter();
   const [inputValue, setInputValue] = useState("");
+  const [editorReady, setEditorReady] = useState(false);
   const [isExerciseDrawerOpen, setIsExerciseDrawerOpen] = useState(false);
   const [currentExercise, setCurrentExercise] = useState<
-    { prompt: string; audioUrl?: string } | undefined
+    { prompt: string; audioUrl?: string; feedback?: string; feedbackAudioUrl?: string } | undefined
   >(undefined);
   const [isExerciseLoading, setIsExerciseLoading] = useState(false);
+  const [practiceType, setPracticeType] = useState<PracticeType>("grammar");
   /** Exercise-panel-local error (shown inline, not as a toast). */
   const [exerciseError, setExerciseError] = useState<string | null>(null);
   /** Whether the mistakes review panel is visible. */
   const [showMistakes, setShowMistakes] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const audioAbortRef = useRef<AbortController | null>(null);
-  const { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, dismissError } = useChatWorkflow({ sessionId, language, initialMessages, router });
-
-  useEffect(() => () => audioAbortRef.current?.abort(), [sessionId]);
+  const { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, requestPractice, dismissError } = useChatWorkflow({ sessionId, language, initialMessages, router });
 
   // Load initial messages when session changes (e.g., resuming after sign-out)
   // Always set — empty array is valid for a new session (fixes Issue #10).
@@ -140,70 +140,37 @@ export function ChatScreen({
 
   const handleExerciseSubmit = async (answer: string) => {
     await submit(answer, {
-      beforeSubmit: () => setIsExerciseDrawerOpen(false),
+      beforeSubmit: () => setCurrentExercise((previous) => previous ? { ...previous, feedback: undefined, feedbackAudioUrl: undefined } : previous),
+      onComplete: (feedback) => setCurrentExercise((previous) => previous ? { ...previous, feedback } : previous),
+      onAudio: (feedbackAudioUrl) => setCurrentExercise((previous) => previous ? { ...previous, feedbackAudioUrl } : previous),
       onError: setExerciseError,
       demoResponse: "Backend not available — start it with: uvicorn app.main:app --reload",
     });
   };
 
-  const handleRequestNewExercise = async () => {
+  const handleRequestNewExercise = useCallback(async (selectedType: PracticeType = practiceType) => {
+    if (isLoading || isExerciseLoading) return;
     setIsExerciseLoading(true);
     setCurrentExercise(undefined);
-
-    if (!sessionId || sessionId === "demo-session") {
-      await new Promise((r) => setTimeout(r, 1200));
-      setCurrentExercise({
-        prompt:
-          language === "korean"
-            ? '다음 문장을 한국어로 번역하세요: "I went to the market yesterday to buy vegetables."'
-            : language === "japanese"
-              ? '次の文章を日本語に訳してください: "I went to the market yesterday to buy vegetables."'
-              : 'Translate the following sentence into your target language: "I went to the market yesterday to buy vegetables."',
-      });
-      setIsExerciseLoading(false);
-      setIsExerciseDrawerOpen(true);
-      return;
-    }
-
     setExerciseError(null);
-    try {
-      // Request a new exercise via the chat endpoint
-      const exercisePrompt =
-        language === "korean"
-          ? "새로운 연습 문제를 만들어 주세요."
-          : language === "japanese"
-            ? "新しい練習問題を作ってください。"
-            : "Please generate a new exercise for me.";
+    await requestPractice(selectedType, {
+      onComplete: (prompt) => { setCurrentExercise({ prompt }); setIsExerciseDrawerOpen(true); },
+      onAudio: (audioUrl) => setCurrentExercise((previous) => previous ? { ...previous, audioUrl } : previous),
+      onError: setExerciseError,
+      demoResponse: language === "korean"
+        ? '다음 문장을 한국어로 번역하세요: "I went to the market yesterday to buy vegetables."'
+        : language === "japanese"
+          ? '次の文章を日本語に訳してください: "I went to the market yesterday to buy vegetables."'
+          : 'Translate the following sentence into your target language: "I went to the market yesterday to buy vegetables."',
+    });
+    setIsExerciseLoading(false);
+  }, [isExerciseLoading, isLoading, language, practiceType, requestPractice]);
 
-      const exResult = await sendChatStream(
-        sessionId,
-        exercisePrompt,
-        () => {}, // no-op — exercise panel renders the full prompt at the end
-      );
-      setCurrentExercise({ prompt: exResult.reply });
-      setIsExerciseDrawerOpen(true);
-
-      synthesizeExercisePrompt({
-        sessionId,
-        text: exResult.reply,
-        audioAbortRef,
-        setExerciseAudioUrl: (url) =>
-          setCurrentExercise((prev) =>
-            prev ? { ...prev, audioUrl: url } : prev,
-          ),
-      });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      // Show error inline in the exercise panel instead of as a toast
-      const msg =
-        err instanceof ApiError
-          ? err.message
-          : "Failed to generate exercise. Please try again.";
-      setExerciseError(msg);
-    } finally {
-      setIsExerciseLoading(false);
-    }
-  };
+  const handlePracticeMistakes = useCallback(() => {
+    setPracticeType("mistake_review");
+    setIsExerciseDrawerOpen(true);
+    void handleRequestNewExercise("mistake_review");
+  }, [handleRequestNewExercise]);
 
   const isEmpty = messages.length === 0;
 
@@ -276,7 +243,7 @@ export function ChatScreen({
                 Close
               </button>
             </div>
-            <MistakesPanel sessionId={sessionId} onRequestExercise={sendMessage} />
+            <MistakesPanel sessionId={sessionId} onRequestPractice={handlePracticeMistakes} />
           </div>
         </div>
       )}
@@ -306,7 +273,7 @@ export function ChatScreen({
                 // Resume last exercise
                 setIsExerciseDrawerOpen(true);
               } else {
-                handleRequestNewExercise();
+                setIsExerciseDrawerOpen(true);
               }
             }}
             disabled={isLoading || isExerciseLoading}
@@ -328,26 +295,13 @@ export function ChatScreen({
             ref={editorWrapRef}
           >
             <div className="md-editor-wrap rounded-2xl border border-input overflow-hidden focus-within:ring-2 focus-within:ring-ring transition-all shadow-xs">
-              <MDEditor
-                value={inputValue}
-                onChange={isLoading ? undefined : handleEditorChange}
-                preview="edit"
-                height={128}
-                aria-label="Message input"
-                textareaProps={{
-                  placeholder: CHAT_PLACEHOLDERS[language],
-                  disabled: isLoading,
-                }}
-                commands={[
-                  commands.bold,
-                  commands.italic,
-                  commands.strikethrough,
-                  commands.quote,
-                  commands.divider,
-                  commands.orderedListCommand,
-                  commands.unorderedListCommand,
-                ]}
-              />
+              {editorReady ? (
+                <MarkdownEditor value={inputValue} disabled={isLoading} placeholder={CHAT_PLACEHOLDERS[language]} onChange={handleEditorChange} />
+              ) : (
+                <button type="button" onClick={() => setEditorReady(true)} onFocus={() => setEditorReady(true)} className="h-32 w-full px-3 text-left text-sm text-muted-foreground" aria-label="Open message editor">
+                  {CHAT_PLACEHOLDERS[language]}
+                </button>
+              )}
             </div>
           </div>
           <Button
@@ -373,6 +327,8 @@ export function ChatScreen({
         language={language}
         onSubmitAnswer={handleExerciseSubmit}
         onRequestNew={handleRequestNewExercise}
+        practiceType={practiceType}
+        onPracticeTypeChange={setPracticeType}
         isLoading={isLoading || isExerciseLoading}
         currentExercise={currentExercise}
         error={exerciseError}

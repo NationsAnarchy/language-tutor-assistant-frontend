@@ -8,8 +8,12 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Build a JWT the backend can verify with the same AUTH_SECRET
-  const secret = new TextEncoder().encode(process.env.AUTH_SECRET!)
+  // Keep this signing contract aligned with FastAPI: AUTH_SECRET + HS256 + exp.
+  const configuredSecret = process.env.AUTH_SECRET
+  if (!configuredSecret) {
+    return NextResponse.json({ detail: 'Authentication is not configured.', code: 'auth_configuration_error' }, { status: 500 })
+  }
+  const secret = new TextEncoder().encode(configuredSecret)
   const token = await new SignJWT({
     sub: session.user.id,
     email: session.user.email || '',

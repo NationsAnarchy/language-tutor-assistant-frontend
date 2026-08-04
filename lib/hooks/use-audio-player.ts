@@ -85,7 +85,14 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
   }, [])
 
   const cleanupElement = useCallback(() => {
-    if (audioRef.current) audioManager.unregister(audioRef.current)
+    const audio = audioRef.current
+    if (!audio) return
+
+    audioManager.unregister(audio)
+    audio.pause()
+    audio.removeAttribute('src')
+    audio.load()
+    audioRef.current = null
   }, [])
 
   const attachExternalHandlers = useCallback((audio: HTMLAudioElement) => {
@@ -184,15 +191,9 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
     })
   }
 
-  useEffect(() => () => cleanupElement(), [cleanupElement])
-
-  // A generated TTS response owns its blob URL. Release it when this player
-  // is replaced or unmounted; cached backend URLs are left untouched.
-  useEffect(() => {
-    return () => {
-      if (audioUrl?.startsWith('blob:')) URL.revokeObjectURL(audioUrl)
-    }
-  }, [audioUrl])
+  // The chat workflow owns generated object URLs. This hook only owns the
+  // media element, which must be disposed when its source changes or unmounts.
+  useEffect(() => () => cleanupElement(), [audioUrl, cleanupElement])
 
   const hasFailed = failure !== null
   const canRetry = hasFailed && isRetryable(failure)

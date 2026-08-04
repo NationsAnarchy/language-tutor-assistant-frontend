@@ -5,6 +5,7 @@ import { classifyError, classifyResponseError, registerTokenCacheClearer } from 
 
 let tokenCache: { token: string; expiresAt: number } | null = null
 let tokenPromise: Promise<string | null> | null = null
+const REQUEST_TIMEOUT_MS = 60_000
 
 export async function getToken(): Promise<string | null> {
   if (tokenCache && Date.now() < tokenCache.expiresAt) return tokenCache.token
@@ -35,9 +36,24 @@ export async function getHeaders(): Promise<Record<string, string>> {
 }
 
 export async function authenticatedRequest(path: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const abortFromCaller = () => controller.abort()
+  init.signal?.addEventListener('abort', abortFromCaller, { once: true })
   try {
-    const response = await fetch(resolveApiUrl(path), { ...init, headers: { ...(await getHeaders()), ...init.headers } })
+    const response = await fetch(resolveApiUrl(path), {
+      ...init,
+      signal: controller.signal,
+      headers: { ...(await getHeaders()), ...init.headers },
+    })
     if (!response.ok) throw await classifyResponseError(response)
     return response
-  } catch (error) { throw classifyError(error) }
+  } catch (error) {
+    if (init.signal?.aborted) throw error
+    if (controller.signal.aborted) throw new DOMException('The request timed out.', 'AbortError')
+    throw classifyError(error)
+  } finally {
+    clearTimeout(timeout)
+    init.signal?.removeEventListener('abort', abortFromCaller)
+  }
 }
