@@ -37,10 +37,11 @@ export async function createSession(language: string, level: string): Promise<Cr
   return { session_id: data.session_id, language: languageFromBackend(data.language), level: data.level }
 }
 export async function getSession(sessionId: string): Promise<SessionWithHistory> {
-  const cached = fresh(sessionCache.get(sessionId) || null); if (cached) return cached
+  const cached = getCachedSession(sessionId); if (cached) return cached
   const data = await (await authenticatedRequest(`/session/${sessionId}`)).json() as SessionWithHistory
   sessionCache.set(sessionId, { data, ts: Date.now() }); return data
 }
+export function getCachedSession(sessionId: string): SessionWithHistory | null { return fresh(sessionCache.get(sessionId) || null) }
 export async function listSessions(): Promise<BackendSession[]> {
   const cached = cachedList(); if (cached) return cached
   if (!sessionsListPromise) sessionsListPromise = authenticatedRequest('/sessions').then((response) => response.json()).then((data: BackendSession[]) => { cacheList(data); return data }).finally(() => { sessionsListPromise = null })

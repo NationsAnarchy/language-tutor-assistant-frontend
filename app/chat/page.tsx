@@ -42,6 +42,7 @@ function ChatPageInner() {
     refreshSessions,
     updateSession,
     switchingRef,
+    isChatActive: isAgentLoading,
     onSessionLoaded: applyLoadedSession,
   });
 

@@ -13,19 +13,24 @@ export type { LoadedChatSession } from '@/lib/chat/session-hydration'
 export function useChatSessionNavigation(router: Router, onSessionLoaded: (session: LoadedChatSession) => void) {
   const [switchingSession, setSwitchingSession] = useState(false)
   const switchingRef = useRef(false)
+  const requestVersionRef = useRef(0)
 
   const switchToSession = useCallback(async (sessionId: string, fromPopState = false) => {
+    const requestVersion = ++requestVersionRef.current
     setSwitchingSession(true)
     switchingRef.current = true
     try {
       const session = await getSession(sessionId)
+      if (requestVersion !== requestVersionRef.current) return
       onSessionLoaded(hydrateChatSession(session))
       if (!fromPopState) window.history.pushState({ sessionId }, '', `/chat?session=${sessionId}`)
     } catch (error) {
-      if (error instanceof ApiError && error.status === 404) router.replace('/language')
+      if (requestVersion === requestVersionRef.current && error instanceof ApiError && error.status === 404) router.replace('/language')
     } finally {
-      setSwitchingSession(false)
-      switchingRef.current = false
+      if (requestVersion === requestVersionRef.current) {
+        setSwitchingSession(false)
+        switchingRef.current = false
+      }
     }
   }, [onSessionLoaded, router])
 
