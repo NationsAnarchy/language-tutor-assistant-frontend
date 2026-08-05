@@ -189,3 +189,15 @@
 .markdown-user blockquote {
   border-left-color: rgb(255 255 255 / 35%) !important;
 }
+
+/* The chat composer gives the editor its own primary row on phones. Keep the
+   markdown editor compact there, while retaining its roomier desktop height. */
+.md-editor-wrap .w-md-editor {
+  height: 6rem !important;
+}
+
+@media (min-width: 640px) {
+  .md-editor-wrap .w-md-editor {
+    height: 8rem !important;
+  }
+}

@@ -258,76 +258,72 @@ export function ChatScreen({
       )}
 
       {/* Chat input — always visible */}
-      <div className="px-4 py-3 border-t border-border bg-card/70 backdrop-blur-sm shrink-0">
-        <div className="flex gap-2.5 items-end max-w-3xl mx-auto">
-          {/* Mistakes toggle button */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowMistakes((o) => !o)}
-            disabled={isLoading}
-            className="h-11 w-11 p-0 rounded-2xl shrink-0 shadow-xs"
-            aria-label={showMistakes ? "Close mistakes panel" : "Review mistakes"}
-            title={showMistakes ? "Close mistakes" : "Review mistakes"}
-          >
-            <AlertTriangle className={`size-4 ${showMistakes ? 'text-amber-500' : ''}`} aria-hidden="true" />
-          </Button>
+      <div className="px-3 py-3 sm:px-4 border-t border-border bg-card/70 backdrop-blur-sm shrink-0">
+        <div className="flex flex-col gap-2 max-w-3xl mx-auto sm:flex-row sm:items-end sm:gap-2.5">
+          <div className="order-2 flex gap-2 sm:order-none sm:contents">
+            {/* These actions use their own row on phones so the editor retains useful width. */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowMistakes((o) => !o)}
+              disabled={isLoading}
+              className="h-9 flex-1 rounded-xl shadow-xs sm:h-11 sm:w-11 sm:flex-none sm:rounded-2xl sm:p-0"
+              aria-label={showMistakes ? "Close mistakes panel" : "Review mistakes"}
+              title={showMistakes ? "Close mistakes" : "Review mistakes"}
+            >
+              <AlertTriangle className={`size-4 ${showMistakes ? 'text-amber-500' : ''}`} aria-hidden="true" />
+              <span className="sm:hidden">Mistakes</span>
+            </Button>
 
-          {/* Exercise trigger button */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              if (currentExercise && !isExerciseDrawerOpen) {
-                // Resume last exercise
-                setIsExerciseDrawerOpen(true);
-              } else {
-                setIsExerciseDrawerOpen(true);
-              }
-            }}
-            disabled={isLoading || isExerciseLoading}
-            className="h-11 w-11 p-0 rounded-2xl shrink-0 shadow-xs"
-            aria-label={
-              currentExercise ? "Resume exercise" : "Start a new exercise"
-            }
-            title={currentExercise ? "Resume exercise" : "New exercise"}
-          >
-            {isExerciseLoading ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <BookOpen className="size-4" aria-hidden="true" />
-            )}
-          </Button>
-
-          <div
-            className="flex-1 min-w-0"
-            ref={editorWrapRef}
-          >
-            <div className="md-editor-wrap rounded-2xl border border-input overflow-hidden focus-within:ring-2 focus-within:ring-ring transition-all shadow-xs">
-              {editorReady ? (
-                <MarkdownEditor value={inputValue} disabled={isLoading} placeholder={CHAT_PLACEHOLDERS[language]} onChange={handleEditorChange} />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsExerciseDrawerOpen(true)}
+              disabled={isLoading || isExerciseLoading}
+              className="h-9 flex-1 rounded-xl shadow-xs sm:h-11 sm:w-11 sm:flex-none sm:rounded-2xl sm:p-0"
+              aria-label={currentExercise ? "Resume exercise" : "Start a new exercise"}
+              title={currentExercise ? "Resume exercise" : "New exercise"}
+            >
+              {isExerciseLoading ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
               ) : (
-                <button type="button" onClick={() => setEditorReady(true)} onFocus={() => setEditorReady(true)} className="h-32 w-full px-3 text-left text-sm text-muted-foreground" aria-label="Open message editor">
-                  {CHAT_PLACEHOLDERS[language]}
-                </button>
+                <BookOpen className="size-4" aria-hidden="true" />
               )}
-            </div>
+              <span className="sm:hidden">{currentExercise ? "Resume exercise" : "Exercise"}</span>
+            </Button>
           </div>
-          <Button
-            size="sm"
-            onClick={handleSend}
-            disabled={!inputValue.trim() || isLoading}
-            className="h-11 w-11 p-0 rounded-2xl shrink-0 shadow-xs"
-            aria-label="Send message"
-          >
-            <Send className="size-4" aria-hidden="true" />
-          </Button>
+
+          <div className="order-1 flex flex-1 min-w-0 items-end gap-2 sm:order-none sm:gap-2.5">
+            <div className="flex-1 min-w-0" ref={editorWrapRef}>
+              <div className="md-editor-wrap rounded-2xl border border-input overflow-hidden focus-within:ring-2 focus-within:ring-ring transition-all shadow-xs">
+                {editorReady ? (
+                  <MarkdownEditor value={inputValue} disabled={isLoading} placeholder={CHAT_PLACEHOLDERS[language]} onChange={handleEditorChange} />
+                ) : (
+                  <button type="button" onClick={() => setEditorReady(true)} onFocus={() => setEditorReady(true)} className="h-24 w-full px-3 text-left text-sm text-muted-foreground sm:h-32" aria-label="Open message editor">
+                    {CHAT_PLACEHOLDERS[language]}
+                  </button>
+                )}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleSend}
+              disabled={!inputValue.trim() || isLoading}
+              className="h-11 w-11 p-0 rounded-2xl shrink-0 shadow-xs"
+              aria-label="Send message"
+            >
+              <Send className="size-4" aria-hidden="true" />
+            </Button>
+          </div>
         </div>
-        <p className="text-center text-[11px] text-muted-foreground mt-2">
+        <p className="mt-2 text-center text-[11px] text-muted-foreground">
+          <span className="sm:hidden">Markdown supported · </span>
           <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">⌘/Ctrl+Enter</kbd> to send
-          {" "}·{" "}
-          <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Enter</kbd> for new line
-          {" "}· Markdown supported
+          <span className="hidden sm:inline">
+            {" "}·{" "}
+            <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Enter</kbd> for new line
+            {" "}· Markdown supported
+          </span>
         </p>
       </div>
       {/* Exercise drawer overlay — must be outside the flex column to avoid
