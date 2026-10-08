@@ -1,3 +1,8 @@
+# CI workflow — copy this file to `.github/workflows/ci.yml` to enable it.
+#
+# It lives here rather than in `.github/workflows/` because the automation
+# token that created this branch is not permitted to write workflow files.
+
 name: CI
 
 on:
