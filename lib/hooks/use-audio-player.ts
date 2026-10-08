@@ -84,10 +84,6 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
     setShowControls(false)
   }, [])
 
-  const cleanupElement = useCallback(() => {
-    if (audioRef.current) audioManager.unregister(audioRef.current)
-  }, [])
-
   const attachExternalHandlers = useCallback((audio: HTMLAudioElement) => {
     audio.addEventListener('pause', () => {
       if (!userPauseRef.current) {
@@ -184,7 +180,7 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
     })
   }
 
-  useEffect(() => () => cleanupElement(), [cleanupElement])
+  useEffect(() => () => resetAudio(), [resetAudio])
 
   const hasFailed = failure !== null
   const canRetry = hasFailed && isRetryable(failure)

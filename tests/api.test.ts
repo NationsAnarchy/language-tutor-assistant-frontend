@@ -5,8 +5,10 @@ import {
   audioUrl,
   classifyError,
   classifyResponseError,
+  clearSessionCaches,
   clearTokenCache,
   getCachedAudioUrl,
+  getSession,
   langFromBackend,
   langToBackend,
   revokeAudioBlobUrls,
@@ -225,5 +227,62 @@ describe('audio blob URL lifecycle', () => {
       code: 'rate_limit',
       retryable: true,
     })
+  })
+})
+
+describe('getSession in-flight deduplication', () => {
+  beforeEach(() => {
+    clearSessionCaches()
+    clearTokenCache()
+  })
+
+  afterEach(() => {
+    clearSessionCaches()
+    clearTokenCache()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('deduplicates concurrent calls to getSession for the same session ID', async () => {
+    let fetchCalls = 0
+    let resolveFirstFetch: (value: Response) => void
+    const firstFetchPromise = new Promise<Response>((resolve) => {
+      resolveFirstFetch = resolve
+    })
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('/api/auth/token')) {
+          return jsonResponse(200, { token: 'test-token' })
+        }
+        if (url.includes('/session/test-sess-1')) {
+          fetchCalls++
+          return firstFetchPromise
+        }
+        return jsonResponse(404, { detail: 'not found' })
+      }),
+    )
+
+    // Fire two concurrent calls
+    const promise1 = getSession('test-sess-1')
+    const promise2 = getSession('test-sess-1')
+
+    // Release the mock fetch response
+    resolveFirstFetch!(
+      jsonResponse(200, {
+        session_id: 'test-sess-1',
+        language: 'es',
+        chat_history: [{ role: 'user', content: 'hola' }],
+      }),
+    )
+
+    const [res1, res2] = await Promise.all([promise1, promise2])
+
+    expect(fetchCalls).toBe(1)
+    expect(res1.session_id).toBe('test-sess-1')
+    expect(res2.session_id).toBe('test-sess-1')
+    expect(res1).toBe(res2)
   })
 })

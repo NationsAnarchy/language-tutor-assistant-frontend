@@ -37,13 +37,13 @@ describe('isAllowedProxyPath', () => {
 })
 
 describe('isPublicProxyPath', () => {
-  it('exposes cached audio without a session', () => {
-    // <audio> elements cannot send an Authorization header.
-    expect(isPublicProxyPath('/audio/deadbeef.mp3')).toBe(true)
+  it('requires a session for audio endpoints as well (no endpoints are public)', () => {
+    // Audio endpoints now require authentication via proxy JWT minting
+    expect(isPublicProxyPath('/audio/deadbeef.mp3')).toBe(false)
   })
 
   it('requires a session for every data endpoint', () => {
-    for (const path of ['/sessions', '/session', '/session/abc', '/session/abc/tts', '/chat']) {
+    for (const path of ['/sessions', '/session', '/session/abc', '/session/abc/tts', '/chat', '/audio/deadbeef.mp3']) {
       expect(isPublicProxyPath(path), path).toBe(false)
     }
   })

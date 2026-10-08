@@ -88,6 +88,7 @@ async function getHeaders(): Promise<Record<string, string>> {
 // doesn't show a loading spinner. Invalidated after sending messages.
 // Also persisted to sessionStorage so it survives page navigations (Issue #45).
 const sessionCache = new Map<string, { data: SessionWithHistory; ts: number }>()
+const sessionPromises = new Map<string, Promise<SessionWithHistory>>()
 let sessionsListCache: { data: BackendSession[]; ts: number } | null = null
 let sessionsListPromise: Promise<BackendSession[]> | null = null
 const CACHE_TTL = 30_000 // 30 seconds — balances freshness with snappy switches
@@ -163,12 +164,14 @@ function setCachedSessionsList(data: BackendSession[]) {
  *  so the next visit to this session fetches fresh history. */
 export function invalidateSessionCache(sessionId: string) {
   sessionCache.delete(sessionId)
+  sessionPromises.delete(sessionId)
   sessionsListCache = null
 }
 
 /** Clear all session caches — call after creating/deleting a session. */
 export function clearSessionCaches() {
   sessionCache.clear()
+  sessionPromises.clear()
   sessionsListCache = null
   clearSessionsListFromStorage()
 }
@@ -442,20 +445,33 @@ export async function getSession(sessionId: string): Promise<SessionWithHistory>
   const cached = getCachedSession(sessionId)
   if (cached) return cached
 
-  let res: Response
-  try {
-    res = await fetch(resolveURL(`/session/${sessionId}`), {
-      headers: await getHeaders(),
-    })
-  } catch (err) {
-    throw classifyError(err)
+  // Deduplicate concurrent calls — return the same in-flight promise (Issue #45)
+  const existing = sessionPromises.get(sessionId)
+  if (existing) {
+    return existing
   }
-  if (!res.ok) {
-    throw await classifyResponseError(res)
-  }
-  const data = await res.json()
-  setCachedSession(sessionId, data)
-  return data
+
+  const promise = (async () => {
+    let res: Response
+    try {
+      res = await fetch(resolveURL(`/session/${sessionId}`), {
+        headers: await getHeaders(),
+      })
+    } catch (err) {
+      throw classifyError(err)
+    }
+    if (!res.ok) {
+      throw await classifyResponseError(res)
+    }
+    const data = await res.json()
+    setCachedSession(sessionId, data)
+    return data
+  })().finally(() => {
+    sessionPromises.delete(sessionId)
+  })
+
+  sessionPromises.set(sessionId, promise)
+  return promise
 }
 
 export async function listSessions(): Promise<BackendSession[]> {

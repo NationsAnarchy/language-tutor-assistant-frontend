@@ -30,10 +30,10 @@ const ALLOWED_PATHS: RegExp[] = [
 /**
  * Endpoints reachable without a session.
  *
- * Cached audio has to be public: the browser's `<audio>` element cannot send
- * an `Authorization` header, and the filename is an unguessable content hash.
+ * In Phase 4, audio replay requires authentication. The proxy mints a backend JWT
+ * from the NextAuth session when the browser's <audio> element requests an audio URL.
  */
-const PUBLIC_PATHS: RegExp[] = [/^\/audio\/[A-Za-z0-9._-]+$/]
+const PUBLIC_PATHS: RegExp[] = []
 
 export function isAllowedProxyPath(pathname: string): boolean {
   return ALLOWED_PATHS.some((pattern) => pattern.test(pathname))

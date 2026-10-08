@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { SignJWT } from 'jose'
 import { auth } from '@/lib/auth'
 import {
   isAllowedProxyPath,
@@ -43,10 +44,10 @@ async function proxyRequest(
     )
   }
 
-  // Cached audio is public (see lib/proxy-policy). Everything else requires a
-  // signed-in user, so the proxy cannot be used as an anonymous relay.
+  // All endpoints require a signed-in user so the proxy cannot be used as an anonymous relay.
+  let session = null
   if (!isPublicProxyPath(pathname)) {
-    const session = await auth()
+    session = await auth()
     if (!session?.user?.id) {
       return NextResponse.json(
         { detail: 'Unauthorized', code: 'auth', request_id: requestId },
@@ -63,7 +64,23 @@ async function proxyRequest(
   headers.set('x-request-id', requestId)
 
   const authHeader = request.headers.get('authorization')
-  if (authHeader) headers.set('authorization', authHeader)
+  if (authHeader) {
+    headers.set('authorization', authHeader)
+  } else if (session?.user?.id && process.env.AUTH_SECRET) {
+    // When the browser requests media directly (e.g. <audio src="...">), it sends
+    // session cookies without an Authorization header. Mint a backend JWT on behalf of the user.
+    const secret = new TextEncoder().encode(process.env.AUTH_SECRET)
+    const token = await new SignJWT({
+      sub: session.user.id,
+      email: session.user.email || '',
+      name: session.user.name || '',
+    })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(secret)
+    headers.set('authorization', `Bearer ${token}`)
+  }
 
   // Forward content-type for requests with a body (e.g. TTS sends JSON)
   const contentType = request.headers.get('content-type')
@@ -87,25 +104,24 @@ async function proxyRequest(
     const res = await fetch(url, fetchInit)
     const responseRequestId = res.headers.get('x-request-id') || requestId
 
-    // For binary responses, use ArrayBuffer to avoid text corruption
+    // For binary responses, stream binary body directly and set private cache headers
     if (binary) {
-      const arrayBuffer = await res.arrayBuffer()
       const responseType = res.headers.get('content-type') || 'audio/mpeg'
-      const isStaticAudio = pathname.startsWith('/audio/')
-      return new NextResponse(arrayBuffer, {
+      const headersInit: Record<string, string> = {
+        'content-type': responseType,
+        'cache-control': 'private, no-cache',
+        'x-request-id': responseRequestId,
+      }
+      const contentLength = res.headers.get('content-length')
+      if (contentLength) {
+        headersInit['content-length'] = contentLength
+      }
+
+      const bodyStream = res.body ?? (await res.arrayBuffer())
+      return new NextResponse(bodyStream as BodyInit, {
         status: res.status,
         statusText: res.statusText,
-        headers: {
-          'content-type': responseType,
-          'content-length': res.headers.get('content-length') || String(arrayBuffer.byteLength),
-          'x-request-id': responseRequestId,
-          ...(isStaticAudio
-            ? {
-                'accept-ranges': 'bytes',
-                'cache-control': 'public, max-age=86400',
-              }
-            : { 'cache-control': 'no-cache' }),
-        },
+        headers: headersInit,
       })
     }
 
