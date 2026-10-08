@@ -19,6 +19,25 @@ The app runs on `http://localhost:3000`.
 
 > **Important:** The backend must be running separately on `http://localhost:8000` (see `../backend/README.md`).
 
+### Scripts
+
+| Command | What it does |
+|---------|--------------|
+| `npm run dev` | Development server |
+| `npm run build` | Production build (fails on type errors) |
+| `npm start` | Serve the production build |
+| `npm run lint` | ESLint (flat config, `eslint.config.mjs`) |
+| `npm run lint:fix` | ESLint with `--fix` |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Vitest unit tests (`tests/`) |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run verify` | typecheck → lint → test → build |
+
+CI (`.github/workflows/ci.yml`) runs `npm run verify` steps on every push and
+pull request. Because the automation token used to author this branch cannot
+write workflow files, the workflow is checked in at `docs/ci-workflow.yml` —
+copy it to `.github/workflows/ci.yml` to enable it.
+
 ## Environment Variables
 
 Create a `.env.local` file:
@@ -44,7 +63,8 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 
 | Screen | Description |
 |--------|-------------|
-| **Login** | OAuth sign-in with Google (or GitHub). Double-click prevention via `usePreventDoubleClick` hook |
+| **Login** | OAuth sign-in with Google. Double-click prevention via `usePreventDoubleClick` hook. GitHub sign-in is configured in `lib/auth` but its button is not rendered |
+| **Entry redirect** (`app/page.tsx`) | Sends authenticated visitors straight back to the conversation they were last in (via `lib/active-session.ts`), or to the picker if there is none |
 | **Language & Level Picker** | Choose language (English/한국어/日本語) and level (Beginner/Intermediate/Advanced). Shows existing sessions as "Continue" with "Start a fresh session instead" option. Flags rendered via twemoji SVG for cross-platform consistency. All buttons disabled while sessions are loading |
 | **Chat Screen** | Primary interface — chat bubbles with markdown rendering (including tables), typing indicator, audio playback with seek bar/volume/speed controls, correction highlighting, error retry |
 | **Exercise Panel** | Structured exercises with prompt card (markdown), answer input, and submission feedback. Inline error display for generation failures |
@@ -88,6 +108,9 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 | `lib/auth/index.ts` | NextAuth configuration with Google/GitHub providers |
 | `lib/auth/auth-provider.tsx` | NextAuth session provider |
 | `lib/providers/tab-detector-provider.tsx` | App provider that renders `MultiTabOverlay` when duplicate tab is detected |
+| `lib/active-session.ts` | Persists the conversation the user was last in (`linguaai_active_session` in `localStorage`) so a returning visitor resumes it instead of going through the picker. Read by `app/page.tsx`, written by `app/chat/page.tsx` |
+| `lib/mappers.ts` | Backend → UI conversions: `mapChatHistory()` (prefers `audio_hash` for zero-cost replay, falls back to `audio_url`), `mapBackendSession()`, `byMostRecent()` |
+| `lib/proxy-policy.ts` | Path policy for the API proxy: which endpoints may be forwarded and which are reachable without a session |
 | `lib/toast.ts` | Typed toast helpers wrapping sonner |
 | `lib/types.ts` | TypeScript types for messages, languages, levels, audio state |
 | `lib/twemoji.ts` | Maps flag emojis to twemoji CDN SVG URLs for consistent cross-platform rendering |
@@ -133,6 +156,21 @@ The proxy handles both response types:
 The `resolveURL()` function in `lib/api/index.ts` decides the target:
 - **Locally** (`localhost`) → direct backend URL
 - **On Vercel** → proxy path (`/api/proxy/...`)
+
+#### Proxy access control
+
+The proxy is **not** an open relay. `lib/proxy-policy.ts` holds an allowlist of
+the paths the frontend actually calls (`/sessions`, `/session`,
+`/session/{id}`, `/session/{id}/tts`, `/chat`, `/audio/{file}`); anything else
+returns a plain 404 without touching the backend.
+
+Every endpoint except cached audio requires a valid NextAuth session, so the
+route cannot be used to reach the backend anonymously. `/audio/*` is
+deliberately public: a browser `<audio>` element cannot send an
+`Authorization` header, and the filename is an unguessable content hash.
+
+Non-streaming requests time out after 30s; the `/chat` SSE stream is exempt
+because a long LLM + TTS turn can legitimately exceed that.
 
 ### Audio Pipeline
 
@@ -184,6 +222,15 @@ Uses a **heartbeat protocol** over the `BroadcastChannel` API (Chrome 54+, Firef
 
 This is more reliable than a simple counter — it correctly handles 3+ tabs, rapid open/close, and tab crashes without getting stuck.
 
+### Resume Last Session
+
+`app/chat/page.tsx` writes the current conversation to `localStorage`
+(`linguaai_active_session`) whenever a session loads or is switched to. On the
+next visit `app/page.tsx` redirects straight back to it. The pointer is cleared
+on sign-out, when the active conversation is deleted, and when the chat page
+receives a 404 for it (so a conversation deleted elsewhere can't trap the user
+in a redirect loop).
+
 ### Error Handling
 
 | Layer | Mechanism | User Experience |
@@ -203,13 +250,15 @@ frontend/
 ├── app/
 │   ├── layout.tsx              # Root layout with NextAuth + TabDetectorProvider + Toaster
 │   ├── page.tsx                # Main page — routes between login/picker/chat
+│   ├── error.tsx               # Route-level error boundary (Retry)
+│   ├── not-found.tsx           # 404 page
 │   ├── globals.css             # Global styles + theme tokens
 │   └── api/
 │       ├── auth/
 │       │   ├── [...nextauth]/   # NextAuth route handler
 │       │   └── token/           # JWT token endpoint for backend auth
 │       └── proxy/
-│           └── [...path]/       # CORS proxy (JSON + binary support, forwards Content-Type)
+│           └── [...path]/       # CORS proxy — allowlisted paths, session required
 
 ├── components/
 │   ├── audio/
@@ -251,18 +300,26 @@ frontend/
 │   │   └── use-theme.ts           # Theme hook
 │   ├── providers/
 │   │   └── tab-detector-provider.tsx # Multi-tab detection provider
+│   ├── active-session.ts          # Remembers the last conversation (localStorage)
 │   ├── audio-manager.ts           # Global audio singleton
+│   ├── mappers.ts                 # Backend → UI conversions
+│   ├── proxy-policy.ts            # API proxy allowlist + public paths
 │   ├── toast.ts                   # Typed toast helpers
 │   ├── twemoji.ts                 # Flag emoji → twemoji SVG
 │   ├── types.ts                   # TypeScript types
 │   └── utils.ts                   # Utility functions (cn)
 
+├── tests/                       # Vitest unit tests (59 tests)
+├── docs/ci-workflow.yml         # CI workflow — copy to .github/workflows/ci.yml
 ├── public/                      # Static assets (icons, placeholder images)
 ├── .env.example                 # Documented environment variables
+├── .nvmrc                       # Node version for local dev and CI
+├── eslint.config.mjs            # ESLint flat config
 ├── next.config.mjs              # Next.js configuration
-├── package.json                 # Dependencies
+├── package.json                 # Dependencies + scripts
 ├── tsconfig.json                # TypeScript configuration
 ├── vercel.json                  # Vercel deployment config
+├── vitest.config.mts            # Vitest configuration
 └── README.md                    # This file
 ```
 
@@ -277,6 +334,8 @@ frontend/
 | Icons | lucide-react |
 | Emoji Flags | twemoji (Twitter Emoji) SVG via CDN |
 | Toasts | sonner |
+| Tests | Vitest |
+| Lint | ESLint 9 (flat config) + eslint-config-next |
 
 ## Deployment (Vercel)
 
