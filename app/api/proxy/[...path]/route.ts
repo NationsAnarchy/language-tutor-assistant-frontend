@@ -7,7 +7,7 @@ import {
   isSseProxyPath,
 } from '@/lib/proxy-policy'
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
 /** How long to wait on a non-streaming backend request before giving up.
  *

@@ -1,22 +1,13 @@
 'use client'
 
-// In development, the frontend talks directly to the backend.
-// In production (Vercel), we use a same-origin Next.js API proxy to avoid CORS.
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
-
-/** Returns true when running on Vercel (any non-localhost deployment). */
-function shouldUseProxy(): boolean {
-  return typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-}
+// All requests to the backend route through the same-origin BFF proxy (/api/proxy/...).
+// This encapsulates backend URLs completely within the server runtime, avoiding
+// direct client exposure of backend endpoints and credentials.
 
 /** Resolve the correct base URL for a backend API path.
- *  On Vercel, use the same-origin proxy route (/api/proxy/...).
- *  Locally, use the direct backend URL. */
+ *  Always routes through the same-origin Next.js BFF proxy. */
 function resolveURL(path: string): string {
-  if (shouldUseProxy()) {
-    return `/api/proxy${path}`
-  }
-  return `${BACKEND_URL}${path}`
+  return `/api/proxy${path}`
 }
 
 // Map frontend language codes to backend language codes
@@ -720,12 +711,7 @@ export function getCachedAudioUrl(audioHash: string): string | null {
  */
 export function audioUrl(filename: string | null): string | null {
   if (!filename) return null
-  // On Vercel, route audio through the proxy (same-origin, no CORS).
-  // The proxy now handles binary data correctly using ArrayBuffer.
-  if (shouldUseProxy()) {
-    return `/api/proxy/audio/${filename}`
-  }
-  return `${BACKEND_URL}/audio/${filename}`
+  return `/api/proxy/audio/${filename}`
 }
 
 export function langToBackend(lang: string): string {

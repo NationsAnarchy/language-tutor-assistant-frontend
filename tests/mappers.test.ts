@@ -37,14 +37,14 @@ describe('mapChatHistory', () => {
     const [message] = mapChatHistory([
       { role: 'assistant', content: 'hi', audio_hash: 'abc123', audio_url: 'legacy.mp3' },
     ])
-    expect(message.audioUrl).toBe('http://backend.test/audio/abc123.mp3')
+    expect(message.audioUrl).toBe('/api/proxy/audio/abc123.mp3')
   })
 
   it('falls back to audio_url when no hash is present', () => {
     const [message] = mapChatHistory([
       { role: 'assistant', content: 'hi', audio_url: 'legacy.mp3' },
     ])
-    expect(message.audioUrl).toBe('http://backend.test/audio/legacy.mp3')
+    expect(message.audioUrl).toBe('/api/proxy/audio/legacy.mp3')
   })
 
   it('leaves audioUrl undefined when the entry has no audio', () => {

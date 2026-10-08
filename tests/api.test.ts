@@ -131,23 +131,14 @@ describe('language code mapping', () => {
 })
 
 describe('audio URLs', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it('points directly at the backend when running locally', () => {
-    expect(audioUrl('abc.mp3')).toBe('http://backend.test/audio/abc.mp3')
-    expect(getCachedAudioUrl('abc')).toBe('http://backend.test/audio/abc.mp3')
+  it('always routes through the same-origin BFF proxy', () => {
+    expect(audioUrl('abc.mp3')).toBe('/api/proxy/audio/abc.mp3')
+    expect(getCachedAudioUrl('abc')).toBe('/api/proxy/audio/abc.mp3')
   })
 
   it('returns null for a missing filename', () => {
     expect(audioUrl(null)).toBeNull()
     expect(audioUrl('')).toBeNull()
-  })
-
-  it('routes through the same-origin proxy when not on localhost', () => {
-    vi.stubGlobal('window', { location: { hostname: 'app.example.com' } })
-    expect(getCachedAudioUrl('abc')).toBe('/api/proxy/audio/abc.mp3')
   })
 })
 
