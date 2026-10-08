@@ -22,13 +22,13 @@ export const markdownComponents: Components = {
     const isInline = !className
     if (isInline) {
       return (
-        <code className="px-1 py-0.5 rounded text-[0.85em] bg-black/10 font-mono" {...props}>
+        <code className="px-1 py-0.5 rounded text-[0.85em] bg-muted/80 text-foreground border border-border/40 font-mono" {...props}>
           {children}
         </code>
       )
     }
     return (
-      <code className={`block px-3 py-2 rounded-lg text-[0.85em] bg-black/10 font-mono overflow-x-auto mb-1.5 ${className || ''}`} {...props}>
+      <code className={`block px-3 py-2 rounded-lg text-[0.85em] bg-muted/80 text-foreground border border-border/40 font-mono overflow-x-auto mb-1.5 ${className || ''}`} {...props}>
         {children}
       </code>
     )

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Send, BookOpen, MessageSquare, Sparkles } from 'lucide-react'
+import { Send, BookOpen, MessageSquare, Sparkles, Square, ArrowDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { TopBar } from '../layout/top-bar'
@@ -92,11 +92,30 @@ export function ChatScreen({
   }
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLElement>(null)
+  const [showScrollBottom, setShowScrollBottom] = useState(false)
+  const isNearBottomRef = useRef(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const audioAbortRef = useRef<AbortController | null>(null)
   const prevLoadingRef = useRef(false)
   const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null)
+
+  // Track scroll position to prevent snapping away if user scrolled up
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    const nearBottom = distanceToBottom < 120
+    isNearBottomRef.current = nearBottom
+    setShowScrollBottom(!nearBottom)
+  }, [])
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    setShowScrollBottom(false)
+    isNearBottomRef.current = true
+  }, [])
 
   // Cancel in-flight request when session changes or component unmounts (Issue #14)
   useEffect(() => {
@@ -131,9 +150,12 @@ export function ChatScreen({
     return () => { cancelled = true }
   }, [sessionId, initialMessages])
 
-  // Auto-scroll to bottom on new messages
+  // Smart auto-scroll: only scrolls if user is already near bottom.
+  // Instant scroll during streaming avoids queuing hundreds of smooth-scroll frames.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: isLoading ? 'auto' : 'smooth' })
+    }
   }, [messages, isLoading])
 
   // Notify parent of loading state (Issue #35)
@@ -347,6 +369,42 @@ export function ChatScreen({
       return next
     })
   }, [])
+
+  const handleStopGenerating = useCallback(() => {
+    abortRef.current?.abort()
+    setIsLoading(false)
+    toast.info('Response stopped.')
+  }, [])
+
+  const handleRetryAudio = useCallback((messageId: string, content: string) => {
+    if (!sessionId) return
+    setAudioFailures((prev) => {
+      const next = new Map(prev)
+      next.delete(messageId)
+      return next
+    })
+    setAudioLoadingId(messageId)
+    const audioController = new AbortController()
+    audioAbortRef.current = audioController
+    synthesizeAudio(sessionId, content, audioController.signal)
+      .then((url) => {
+        if (audioController.signal.aborted) return
+        setAudioLoadingId(null)
+        if (url) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === messageId ? { ...m, audioUrl: url } : m)),
+          )
+        }
+      })
+      .catch((audioErr) => {
+        if (audioController.signal.aborted) return
+        setAudioLoadingId(null)
+        const hint = audioErr instanceof ApiError
+          ? "Audio couldn't be generated right now."
+          : 'Audio unavailable.'
+        setAudioFailures((prev) => new Map(prev).set(messageId, hint))
+      })
+  }, [sessionId])
 
   const handleSend = () => {
     if (!inputValue.trim() || isLoading) return
@@ -579,7 +637,9 @@ export function ChatScreen({
         </main>
       ) : (
         <main
-          className="flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-5"
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="relative flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-5"
           aria-label="Conversation"
           aria-live="polite"
           aria-atomic="false"
@@ -591,6 +651,7 @@ export function ChatScreen({
                 message={msg}
                 isAudioLoading={audioLoadingId === msg.id}
                 audioFailureHint={audioFailures.get(msg.id)}
+                onRetryAudio={handleRetryAudio}
               />
               {messageErrors.has(msg.id) && (
                 <ChatBubbleError
@@ -601,6 +662,21 @@ export function ChatScreen({
               )}
             </div>
           ))}
+
+          {/* Floating scroll to bottom pill */}
+          {showScrollBottom && (
+            <div className="sticky bottom-2 flex justify-center pointer-events-none z-10">
+              <button
+                type="button"
+                onClick={scrollToBottom}
+                className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card/95 backdrop-blur-md border border-border text-xs font-medium text-foreground shadow-lg hover:bg-accent hover:border-primary/50 transition-all duration-150 animate-in fade-in slide-in-from-bottom-2"
+                aria-label="Scroll to newest messages"
+              >
+                <ArrowDown className="size-3 text-primary" aria-hidden="true" />
+                <span>{isLoading ? 'New messages ↓' : 'Scroll to bottom'}</span>
+              </button>
+            </div>
+          )}
 
           <div ref={messagesEndRef} />
         </main>
@@ -652,15 +728,28 @@ export function ChatScreen({
               className="flex-1 resize-none rounded-2xl border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all leading-relaxed min-h-11 max-h-32 disabled:opacity-50 shadow-xs"
               style={{ overflowY: 'hidden' }}
             />
-            <Button
-              size="sm"
-              onClick={handleSend}
-              disabled={!inputValue.trim() || isLoading}
-              className="h-11 w-11 p-0 rounded-2xl shrink-0 shadow-xs"
-              aria-label="Send message"
-            >
-              <Send className="size-4" aria-hidden="true" />
-            </Button>
+            {isLoading ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleStopGenerating}
+                className="h-11 w-11 p-0 rounded-2xl shrink-0 shadow-xs"
+                aria-label="Stop generating"
+                title="Stop generating"
+              >
+                <Square className="size-4 fill-current" aria-hidden="true" />
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={handleSend}
+                disabled={!inputValue.trim()}
+                className="h-11 w-11 p-0 rounded-2xl shrink-0 shadow-xs"
+                aria-label="Send message"
+              >
+                <Send className="size-4" aria-hidden="true" />
+              </Button>
+            )}
           </div>
           <p className="text-center text-[11px] text-muted-foreground mt-2">
             Press <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Enter</kbd> to send

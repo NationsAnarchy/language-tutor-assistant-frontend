@@ -1,3 +1,5 @@
+import { memo, useState } from 'react'
+import { Copy, Check, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -13,9 +15,37 @@ interface ChatBubbleProps {
   message: Message
   isAudioLoading?: boolean
   audioFailureHint?: string
+  onRetryAudio?: (messageId: string, content: string) => void
 }
 
-export function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBubbleProps) {
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // ignore clipboard error
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="inline-flex items-center justify-center size-6 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={copied ? 'Copied to clipboard' : 'Copy message'}
+      title={copied ? 'Copied!' : 'Copy'}
+    >
+      {copied ? <Check className="size-3 text-emerald-500" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}
+    </button>
+  )
+}
+
+function ChatBubbleComponent({ message, isAudioLoading, audioFailureHint, onRetryAudio }: ChatBubbleProps) {
   const isUser = message.role === 'user'
   const hasCorrections = message.segments?.some((s) => s.type === 'correction')
 
@@ -80,12 +110,22 @@ export function ChatBubble({ message, isAudioLoading, audioFailureHint }: ChatBu
           ) : isAudioLoading ? (
             <Spinner size="sm" className="shrink-0" />
           ) : audioFailureHint ? (
-            <span className="shrink-0 inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 px-1.5 py-0.5 rounded-md bg-muted/40" title={audioFailureHint} aria-label={audioFailureHint}>
-              🔇
-            </span>
+            <button
+              type="button"
+              onClick={() => onRetryAudio?.(message.id, message.content)}
+              className="shrink-0 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground px-2 py-0.5 rounded-md bg-muted/60 hover:bg-muted transition-colors border border-border/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title={`${audioFailureHint} Click to retry.`}
+              aria-label="Retry audio generation"
+            >
+              <RefreshCw className="size-3" aria-hidden="true" />
+              <span>Retry audio</span>
+            </button>
           ) : null}
+          {message.content && <CopyButton text={message.content} />}
         </div>
       </div>
     </div>
   )
 }
+
+export const ChatBubble = memo(ChatBubbleComponent)

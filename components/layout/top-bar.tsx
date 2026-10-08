@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { memo, useState, useRef, useEffect } from 'react'
 import { Globe, LogOut, ChevronDown, Moon, Sun, Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getFlagSvgUrl } from '@/lib/twemoji'
@@ -43,7 +43,7 @@ function UserAvatar({ user }: { user: User }) {
   )
 }
 
-export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, disabled, onToggleSidebar, sidebarOpen }: TopBarProps) {
+export const TopBar = memo(function TopBar({ user, language, level, onSwitchLanguage, onSignOut, disabled, onToggleSidebar, sidebarOpen }: TopBarProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const { theme, toggle: toggleTheme } = useTheme()
@@ -242,4 +242,4 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
       </div>
     </header>
   )
-}
+})

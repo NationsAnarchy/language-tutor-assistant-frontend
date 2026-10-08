@@ -272,6 +272,7 @@ function ChatPageInner() {
     if (selectedSessionId === sessionId || switchingRef.current) return;
     // Stop any playing audio before switching conversations (Issue #42)
     audioManager.stopAll();
+    setSidebarOpen(false);
     switchToSession(selectedSessionId, false);
   };
 
@@ -279,12 +280,14 @@ function ChatPageInner() {
     // Stop any playing audio before navigating away (Issue #42)
     audioManager.stopAll();
     clearSessionCaches();
+    setSidebarOpen(false);
     router.push("/language");
   };
 
   const handleSwitchLanguage = () => {
     // Stop any playing audio before navigating away (Issue #42)
     audioManager.stopAll();
+    setSidebarOpen(false);
     router.push("/language");
   };
 

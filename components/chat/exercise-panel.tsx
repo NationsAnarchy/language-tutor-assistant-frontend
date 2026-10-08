@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { RefreshCcw, Send, BookOpen, Loader2, AlertCircle } from 'lucide-react'
+import { memo, useEffect, useState } from 'react'
+import { RefreshCcw, Send, BookOpen, Loader2, AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -30,7 +30,7 @@ const ANSWER_PLACEHOLDERS: Record<Language, string> = {
   japanese: '日本語で答えを入力してください...',
 }
 
-export function ExercisePanel({
+export const ExercisePanel = memo(function ExercisePanel({
   language,
   onSubmitAnswer,
   onRequestNew,
@@ -40,11 +40,18 @@ export function ExercisePanel({
   onDismissError,
 }: ExercisePanelProps) {
   const [answer, setAnswer] = useState('')
+  const [isSubmitted, setIsSubmitted] = useState(false)
+
+  // Reset submitted state whenever the exercise prompt changes
+  useEffect(() => {
+    setIsSubmitted(false)
+  }, [currentExercise?.prompt])
 
   const handleSubmit = () => {
     if (!answer.trim() || isLoading || !currentExercise) return
     onSubmitAnswer(answer.trim())
     setAnswer('')
+    setIsSubmitted(true)
   }
 
   const canSubmit = !!answer.trim() && !!currentExercise && !isLoading
@@ -94,21 +101,43 @@ export function ExercisePanel({
 
       {/* Exercise prompt card */}
       {currentExercise ? (
-        <div
-          className="rounded-xl border border-border bg-background px-4 py-3.5 flex gap-3 items-start shadow-xs"
-          role="region"
-          aria-label="Exercise prompt"
-        >
-          <div className="flex-1 min-w-0 text-sm text-foreground leading-relaxed">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-              {currentExercise.prompt}
-            </ReactMarkdown>
+        <div className="space-y-2">
+          <div
+            className="rounded-xl border border-border bg-background px-4 py-3.5 flex gap-3 items-start shadow-xs"
+            role="region"
+            aria-label="Exercise prompt"
+          >
+            <div className="flex-1 min-w-0 text-sm text-foreground leading-relaxed">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                {currentExercise.prompt}
+              </ReactMarkdown>
+            </div>
+            {currentExercise.audioUrl && (
+              <AudioPlayButton
+                audioUrl={currentExercise.audioUrl}
+                className="shrink-0 mt-0.5"
+              />
+            )}
           </div>
-          {currentExercise.audioUrl && (
-            <AudioPlayButton
-              audioUrl={currentExercise.audioUrl}
-              className="shrink-0 mt-0.5"
-            />
+
+          {isSubmitted && (
+            <div className="flex items-center justify-between gap-3 px-3.5 py-2 rounded-xl border border-primary/20 bg-primary/5 text-xs animate-in fade-in-0 duration-150">
+              <div className="flex items-center gap-1.5 text-primary font-medium min-w-0">
+                <CheckCircle2 className="size-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">Answer submitted — see tutor feedback above!</span>
+              </div>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={onRequestNew}
+                disabled={isLoading}
+                className="h-6 text-[11px] px-2 shrink-0 gap-1 border-primary/30 text-primary hover:bg-primary/10"
+              >
+                Next exercise
+                <ArrowRight className="size-3" aria-hidden="true" />
+              </Button>
+            </div>
           )}
         </div>
       ) : (
@@ -171,4 +200,4 @@ export function ExercisePanel({
       </div>
     </div>
   )
-}
+})

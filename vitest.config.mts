@@ -12,7 +12,7 @@ export default defineConfig({
     // building, formatters, mappers). Component tests can opt into jsdom
     // per-file via `// @vitest-environment jsdom` once a DOM env is added.
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.{ts,tsx}'],
     // Pinned so URL-building assertions are deterministic.
     env: { NEXT_PUBLIC_BACKEND_URL: 'http://backend.test' },
     globals: false,

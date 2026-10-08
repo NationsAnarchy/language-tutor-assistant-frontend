@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { MessageCircle, Pencil, Trash2, Check, Loader2 } from 'lucide-react'
+import { memo, useState } from 'react'
+import { MessageCircle, Pencil, Trash2, Check, X, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { deleteSession, renameSession } from '@/lib/api'
 import { toast } from '@/lib/toast'
@@ -19,7 +19,7 @@ interface SessionItemProps {
   disabled?: boolean
 }
 
-export function SessionItem({
+export const SessionItem = memo(function SessionItem({
   session,
   isActive,
   onSelect,
@@ -110,8 +110,21 @@ export function SessionItem({
               className="flex-1 min-w-0 bg-transparent border-b border-primary text-xs outline-none disabled:opacity-50"
               autoFocus
             />
-            <button type="button" onClick={handleRename} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground">
+            <button
+              type="button"
+              onClick={handleRename}
+              className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+              aria-label="Confirm rename"
+            >
               <Check className="size-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+              aria-label="Cancel rename"
+            >
+              <X className="size-3" />
             </button>
           </>
         )}
@@ -155,4 +168,4 @@ export function SessionItem({
       )}
     </div>
   )
-}
+})
