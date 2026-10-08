@@ -14,7 +14,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt({ token, account, profile }) {
+    jwt({ token, profile }) {
       // Attach the user's email as sub for backend compatibility
       if (profile?.email) {
         // Always use email as the stable user identifier across sign-ins

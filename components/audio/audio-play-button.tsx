@@ -13,7 +13,7 @@ export function AudioPlayButton({ audioUrl, className }: AudioPlayButtonProps) {
   const {
     audioState, speed, failure, currentTime, duration, volume, muted, showControls,
     handlePlay, handleSeek, toggleMute, handleVolumeChange, toggleSpeed,
-    hasFailed, canRetry, isPermanentlyFailed, isPlaying,
+    hasFailed, canRetry, isPermanentlyFailed,
   } = useAudioPlayer(audioUrl)
 
   if (!audioUrl) return null

@@ -2,30 +2,25 @@
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { LoginScreen } from '@/components/auth/login-screen'
 import { Spinner } from '@/components/ui/spinner'
 
 export default function LoginPage() {
   const { status } = useSession()
   const router = useRouter()
-  const [hasChecked, setHasChecked] = useState(false)
 
   useEffect(() => {
-    if (status === 'loading') return
-
     if (status === 'authenticated') {
       router.replace('/')
-      return
     }
-
-    // Only show LoginScreen when we know the user is unauthenticated.
-    // Waiting prevents a brief flash of the login UI between OAuth
-    // redirect and session resolution.
-    setHasChecked(true)
   }, [status, router])
 
-  if (!hasChecked) {
+  // Render the login UI only once we know the visitor is unauthenticated.
+  // Waiting prevents a brief flash of the login screen between the OAuth
+  // redirect and session resolution. Deriving this from `status` instead of
+  // mirroring it into state avoids an extra render pass.
+  if (status === 'loading' || status === 'authenticated') {
     return (
       <main className="min-h-screen flex items-center justify-center bg-background">
         <Spinner size="lg" label="Loading..." />

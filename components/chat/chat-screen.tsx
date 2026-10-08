@@ -11,14 +11,14 @@ import { ChatBubbleError } from './chat-bubble-error'
 import { ExercisePanel } from './exercise-panel'
 import {
   sendChatStream,
-  audioUrl,
   getSession,
   synthesizeAudio,
-  getCachedAudioUrl,
   invalidateSessionCache,
   clearTokenCache,
+  revokeAudioBlobUrls,
   ApiError,
 } from '@/lib/api'
+import { mapChatHistory } from '@/lib/mappers'
 import { toast } from '@/lib/toast'
 import type { Language, Level, User, Message, ChatMode } from '@/lib/types'
 import { CHAT_PLACEHOLDERS } from '@/lib/types'
@@ -79,6 +79,18 @@ export function ChatScreen({
   /** Exercise-panel-local error (shown inline, not as a toast). */
   const [exerciseError, setExerciseError] = useState<string | null>(null)
 
+  // Reset conversation state when the initialMessages prop changes (i.e. the
+  // parent loaded a different conversation). An empty list is valid for a new
+  // session (fixes Issue #10). Adjusting state during render — rather than in
+  // an effect — avoids an extra commit and a cascading re-render.
+  const [syncedInitialMessages, setSyncedInitialMessages] = useState(initialMessages)
+  if (syncedInitialMessages !== initialMessages) {
+    setSyncedInitialMessages(initialMessages)
+    setMessages(initialMessages)
+    setMessageErrors(new Map())
+    setAudioFailures(new Map())
+  }
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -91,17 +103,12 @@ export function ChatScreen({
     return () => {
       abortRef.current?.abort()
       audioAbortRef.current?.abort()
+      // Release the MP3 blob URLs minted for this conversation. They pin the
+      // whole file in memory until revoked, so without this they accumulated
+      // for the lifetime of the tab.
+      revokeAudioBlobUrls()
     }
   }, [sessionId])
-
-  // Load initial messages when session changes (e.g., resuming after sign-out)
-  // Always set — empty array is valid for a new session (fixes Issue #10).
-  useEffect(() => {
-    setMessages(initialMessages)
-    // Clear per-message errors when switching sessions
-    setMessageErrors(new Map())
-    setAudioFailures(new Map())
-  }, [initialMessages])
 
   // Fallback: if we have a sessionId but no messages, try loading history from backend.
   // Keyed on sessionId so switching to a new (empty) session clears stale messages.
@@ -115,24 +122,7 @@ export function ChatScreen({
     
     getSession(sessionId).then((data) => {
       if (cancelled) return
-      const history: Message[] = (data.chat_history || []).map((msg, i) => {
-        // Build audio URL: prefer cached audio_hash (zero-cost replay, no Gemini API call),
-        // fall back to audio_url for legacy compatibility.
-        let msgAudioUrl: string | undefined
-        if (msg.audio_hash) {
-          const cachedUrl = getCachedAudioUrl(msg.audio_hash)
-          if (cachedUrl) msgAudioUrl = cachedUrl
-        } else if (msg.audio_url) {
-          msgAudioUrl = audioUrl(msg.audio_url) || undefined
-        }
-        return {
-          id: `history-${i}`,
-          role: msg.role === 'user' ? 'user' as const : 'agent' as const,
-          content: msg.content,
-          audioUrl: msgAudioUrl,
-          timestamp: new Date(),
-        }
-      })
+      const history = mapChatHistory(data.chat_history)
       if (history.length > 0) {
         setMessages(history)
       }
@@ -186,9 +176,9 @@ export function ChatScreen({
           return { message: err.message, retryable: false }
 
         case 'network':
-          toast.error(err.message, {
-            action: { label: 'Retry', onClick: () => {} },
-          })
+          // Retrying is offered inline on the failed message (ChatBubbleError),
+          // which can actually resend it. A toast action here had no handler.
+          toast.error(err.message)
           return { message: err.message, retryable: true }
 
         case 'timeout':
@@ -396,6 +386,11 @@ export function ChatScreen({
     setIsLoading(true)
 
     try {
+      // Abort any in-flight request so switching sessions can't leave this one running
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+
       // Submit exercise answer as a chat message — the agent handles intent routing
       const feedbackMsgId = (Date.now() + 1).toString()
       const feedbackMsg: Message = {
@@ -406,7 +401,9 @@ export function ChatScreen({
       }
       setMessages((prev) => [...prev, feedbackMsg])
 
-      const exerciseResult = await sendChatStream(
+      // Streamed tokens already fill the feedback bubble, so the assembled
+      // reply isn't needed here.
+      await sendChatStream(
         sessionId,
         answer,
         (event) => {
@@ -418,6 +415,7 @@ export function ChatScreen({
             )
           }
         },
+        controller.signal,
       )
       invalidateSessionCache(sessionId)
     } catch (err) {
@@ -454,10 +452,15 @@ export function ChatScreen({
           ? '新しい練習問題を作ってください。'
           : 'Please generate a new exercise for me.'
 
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+
       const exResult = await sendChatStream(
         sessionId,
         exercisePrompt,
         () => {}, // no-op — exercise panel renders the full prompt at the end
+        controller.signal,
       )
       setCurrentExercise({ prompt: exResult.reply })
     } catch (err) {

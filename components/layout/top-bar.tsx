@@ -35,7 +35,6 @@ function UserAvatar({ user }: { user: User }) {
       aria-hidden="true"
     >
       {user.image ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img src={user.image} alt="" className="size-full object-cover" />
       ) : (
         initials

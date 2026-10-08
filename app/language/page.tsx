@@ -5,11 +5,8 @@ import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { LanguagePicker } from '@/components/language/language-picker'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  createSession,
-  listSessions,
-  langFromBackend,
-} from '@/lib/api'
+import { createSession, listSessions } from '@/lib/api'
+import { byMostRecent, mapBackendSession } from '@/lib/mappers'
 import type { Language, Level, Session } from '@/lib/types'
 
 export default function LanguagePage() {
@@ -22,16 +19,7 @@ export default function LanguagePage() {
     setSessionsLoading(true)
     try {
       const sessions = await listSessions()
-      setExistingSessions(
-        sessions.map((s) => ({
-          language: langFromBackend(s.language) as Language,
-          level: s.level as Level,
-          exists: true,
-          session_id: s.session_id,
-          title: (s as any).title as string | undefined,
-          updated_at: (s as any).updated_at as string | undefined,
-        })),
-      )
+      setExistingSessions(sessions.map(mapBackendSession))
     } catch {
       setExistingSessions([])
     } finally {
@@ -45,6 +33,7 @@ export default function LanguagePage() {
       return
     }
     if (status === 'authenticated') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch; state updates happen after `await`, not during the effect
       loadUserSessions()
     }
   }, [status, loadUserSessions, router])
@@ -52,7 +41,7 @@ export default function LanguagePage() {
   const handleStart = async (lang: Language, lvl: Level) => {
     const matching = existingSessions
       .filter((s) => s.language === lang && s.level === lvl && s.session_id)
-      .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+      .sort(byMostRecent)
     const existing = matching[0]
     if (existing?.session_id) {
       router.push(`/chat?session=${existing.session_id}`)

@@ -5,17 +5,16 @@ import { SessionSidebar } from "@/components/layout/session-sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import {
   ApiError,
-  audioUrl,
   clearTokenCache,
   clearSessionCaches,
   deleteSession,
-  getCachedAudioUrl,
   getSession,
-  langFromBackend,
   listSessions,
   renameSession,
 } from "@/lib/api";
 import { audioManager } from "@/lib/audio-manager";
+import { clearActiveSession, saveActiveSession } from "@/lib/active-session";
+import { mapBackendSession, mapChatHistory } from "@/lib/mappers";
 import type { Language, Level, Message, Session } from "@/lib/types";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -58,45 +57,21 @@ function ChatPageInner() {
         listSessions(),
       ]);
 
-      const history: Message[] = (sessionData.chat_history || []).map(
-        (msg, i) => {
-          // Prefer audio_hash for zero-cost replay from disk cache,
-          // fall back to audio_url for legacy compatibility.
-          let msgAudioUrl: string | undefined
-          if (msg.audio_hash) {
-            const cachedUrl = getCachedAudioUrl(msg.audio_hash)
-            if (cachedUrl) msgAudioUrl = cachedUrl
-          } else if (msg.audio_url) {
-            msgAudioUrl = audioUrl(msg.audio_url) || undefined
-          }
-          return {
-            id: `history-${i}`,
-            role: msg.role === "user" ? ("user" as const) : ("agent" as const),
-            content: msg.content,
-            audioUrl: msgAudioUrl,
-            timestamp: new Date(),
-          }
-        },
-      );
+      const history = mapChatHistory(sessionData.chat_history);
+      const { language, level } = mapBackendSession(sessionData);
 
       setInitialMessages(history);
-      setLanguage(langFromBackend(sessionData.language) as Language);
-      setLevel(sessionData.level as Level);
+      setLanguage(language);
+      setLevel(level);
       setSessionId(sessionIdParam);
+      setSessions(sessionsList.map(mapBackendSession));
 
-      setSessions(
-        sessionsList.map((s) => ({
-          language: langFromBackend(s.language) as Language,
-          level: s.level as Level,
-          exists: true,
-          session_id: s.session_id,
-          title: (s as any).title as string | undefined,
-          updated_at: (s as any).updated_at as string | undefined,
-        })),
-      );
+      // Remember this conversation so the next visit can resume it (app/page.tsx).
+      saveActiveSession({ language, level, sessionId: sessionIdParam });
     } catch (err) {
       // Only redirect on a true 404 — session doesn't exist
       if (err instanceof ApiError && err.status === 404) {
+        clearActiveSession();
         router.replace("/language");
         return;
       }
@@ -115,6 +90,7 @@ function ChatPageInner() {
   // The API calls are independently authenticated; if the session expired, loadData
   // will throw and the catch handler redirects to /language.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch; state updates happen after `await`, not during the effect
     loadData();
   }, [loadData]);
 
@@ -159,23 +135,11 @@ function ChatPageInner() {
   const refreshSessions = useCallback(async () => {
     try {
       const sessionsList = await listSessions();
-      setSessions(
-        sessionsList.map((s) => ({
-          language: langFromBackend(s.language) as Language,
-          level: s.level as Level,
-          exists: true,
-          session_id: s.session_id,
-          title: (s as any).title as string | undefined,
-          updated_at: (s as any).updated_at as string | undefined,
-        })),
-      );
+      setSessions(sessionsList.map(mapBackendSession));
     } catch {
       // silently fail
     }
   }, []);
-
-  /** Ref to skip pushState when handling a popstate event (back/forward). */
-  const isPopStateRef = useRef(false);
 
   /** Client-side session switch — avoids full page re-mount (Issue #45).
    *  Uses pushState so browser back/forward navigates through sessions. */
@@ -186,30 +150,15 @@ function ChatPageInner() {
     try {
       // Fetch session data (may return cached data for ~30s)
       const sessionData = await getSession(targetSessionId);
-      const history: Message[] = (sessionData.chat_history || []).map(
-        (msg, i) => {
-          let msgAudioUrl: string | undefined
-          if (msg.audio_hash) {
-            const cachedUrl = getCachedAudioUrl(msg.audio_hash)
-            if (cachedUrl) msgAudioUrl = cachedUrl
-          } else if (msg.audio_url) {
-            msgAudioUrl = audioUrl(msg.audio_url) || undefined
-          }
-          return {
-            id: `history-${i}`,
-            role: msg.role === "user" ? ("user" as const) : ("agent" as const),
-            content: msg.content,
-            audioUrl: msgAudioUrl,
-            timestamp: new Date(),
-          }
-        },
-      );
+      const history = mapChatHistory(sessionData.chat_history);
+      const { language, level } = mapBackendSession(sessionData);
 
       // Update all state at once — ChatScreen re-renders with new data
       setInitialMessages(history);
-      setLanguage(langFromBackend(sessionData.language) as Language);
-      setLevel(sessionData.level as Level);
+      setLanguage(language);
+      setLevel(level);
       setSessionId(targetSessionId);
+      saveActiveSession({ language, level, sessionId: targetSessionId });
 
       // Push a new history entry so back/forward works between sessions.
       // Skip pushState when this is a popstate-triggered switch (back/forward).
@@ -280,6 +229,8 @@ function ChatPageInner() {
     }
 
     if (wasActive) {
+      // The remembered conversation no longer exists
+      clearActiveSession();
       // Navigate to the most recent remaining session
       const remaining = [...sessions].filter(s => s.session_id !== targetSessionId);
       const sorted = remaining
@@ -316,6 +267,8 @@ function ChatPageInner() {
   const handleSignOut = () => {
     // Stop any playing audio before signing out (Issue #42)
     audioManager.stopAll();
+    clearActiveSession();
+    clearTokenCache();
     signOut({ callbackUrl: "/login" });
   };
 
@@ -325,14 +278,7 @@ function ChatPageInner() {
     // Refresh sessions to get updated list without the deleted one (Issue #33)
     try {
       const sessionsList = await listSessions();
-      const updated = sessionsList.map((s) => ({
-        language: langFromBackend(s.language) as Language,
-        level: s.level as Level,
-        exists: true,
-        session_id: s.session_id,
-        title: (s as any).title as string | undefined,
-        updated_at: (s as any).updated_at as string | undefined,
-      }));
+      const updated = sessionsList.map(mapBackendSession);
       setSessions(updated);
       // Navigate to latest remaining session, or picker if none
       const sorted = updated
@@ -392,10 +338,10 @@ function ChatPageInner() {
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
-        onSignOut={handleSignOut}
         onSessionsChanged={refreshSessions}
         onActiveSessionDeleted={handleActiveSessionDeleted}
-        user={user}
+        onRenameSession={handleRenameSession}
+        onDeleteSession={handleDeleteSession}
         disabled={isAgentLoading || switchingSession}
       />
       <div className="flex-1 min-w-0">

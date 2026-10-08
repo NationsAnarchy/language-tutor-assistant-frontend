@@ -5,7 +5,7 @@
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
 /** Returns true when running on Vercel (any non-localhost deployment). */
-function useProxy(): boolean {
+function shouldUseProxy(): boolean {
   return typeof window !== 'undefined' && window.location.hostname !== 'localhost'
 }
 
@@ -13,7 +13,7 @@ function useProxy(): boolean {
  *  On Vercel, use the same-origin proxy route (/api/proxy/...).
  *  Locally, use the direct backend URL. */
 function resolveURL(path: string): string {
-  if (useProxy()) {
+  if (shouldUseProxy()) {
     return `/api/proxy${path}`
   }
   return `${BACKEND_URL}${path}`
@@ -382,6 +382,8 @@ export interface BackendSession {
   level: string
   created_at: string
   updated_at?: string
+  /** Server-side conversation title, set once the agent names the session. */
+  title?: string
 }
 
 export interface CreateSessionResult {
@@ -489,28 +491,6 @@ export async function listSessions(): Promise<BackendSession[]> {
   }
 }
 
-/** Re-fetch a single session from the backend and update the cache.
- *  Use for background refreshes — returns the fresh data without throwing. */
-export async function refreshSessionInBackground(sessionId: string): Promise<SessionWithHistory | null> {
-  try {
-    const res = await fetch(resolveURL(`/session/${sessionId}`), {
-      headers: await getHeaders(),
-    })
-    if (!res.ok) return null
-    const data = await res.json()
-    setCachedSession(sessionId, data)
-    return data
-  } catch {
-    return null
-  }
-}
-
-export interface ChatResult {
-  reply: string
-  intent: string
-  audio_url: string | null
-}
-
 /** SSE event from the streaming /chat endpoint. */
 export interface ChatStreamEvent {
   type: 'token' | 'done' | 'error'
@@ -603,29 +583,6 @@ export async function sendChatStream(
   return { reply: fullReply, intent }
 }
 
-/**
- * @deprecated Use sendChatStream() for streaming SSE responses.
- * Kept for backwards compatibility — internally calls sendChatStream
- * and returns the assembled result.
- */
-export async function sendChat(sessionId: string, message: string, signal?: AbortSignal): Promise<ChatResult> {
-  let res: Response
-  try {
-    res = await fetch(resolveURL('/chat'), {
-      method: 'POST',
-      headers: await getHeaders(),
-      body: JSON.stringify({ session_id: sessionId, message }),
-      signal,
-    })
-  } catch (err) {
-    throw classifyError(err)
-  }
-  if (!res.ok) {
-    throw await classifyResponseError(res)
-  }
-  return res.json()
-}
-
 export async function renameSession(sessionId: string, title: string): Promise<boolean> {
   let res: Response
   try {
@@ -665,6 +622,26 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
   return res.ok
 }
 
+// ── Audio blob URL registry ──────────────────────────────────────────────────
+// synthesizeAudio() hands back URL.createObjectURL() URLs, which pin the whole
+// MP3 in memory until they are explicitly revoked. Track every URL we mint so
+// the chat screen can release them when a conversation is torn down.
+const audioBlobUrls = new Set<string>()
+
+function trackAudioBlobUrl(url: string): string {
+  audioBlobUrls.add(url)
+  return url
+}
+
+/** Release every blob URL created by synthesizeAudio().
+ *  Call after playback has been stopped (e.g. on conversation switch or
+ *  unmount), otherwise live <audio> elements are left holding dead URLs. */
+export function revokeAudioBlobUrls(): void {
+  if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') return
+  for (const url of audioBlobUrls) URL.revokeObjectURL(url)
+  audioBlobUrls.clear()
+}
+
 /**
  * Synthesize speech for an assistant message and return an object URL
  * for the audio blob that the frontend can play immediately (Issue #43).
@@ -700,8 +677,7 @@ export async function synthesizeAudio(
 
   // The backend now returns MP3 bytes — create a blob URL (Issue #43)
   const audioBlob = await res.blob()
-  // Revoke any previously created blob URLs for cleanup
-  return URL.createObjectURL(audioBlob)
+  return trackAudioBlobUrl(URL.createObjectURL(audioBlob))
 }
 
 /**
@@ -731,7 +707,7 @@ export function audioUrl(filename: string | null): string | null {
   if (!filename) return null
   // On Vercel, route audio through the proxy (same-origin, no CORS).
   // The proxy now handles binary data correctly using ArrayBuffer.
-  if (useProxy()) {
+  if (shouldUseProxy()) {
     return `/api/proxy/audio/${filename}`
   }
   return `${BACKEND_URL}/audio/${filename}`

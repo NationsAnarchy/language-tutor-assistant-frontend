@@ -1,10 +1,11 @@
 import React from 'react'
+import type { Components } from 'react-markdown'
 
 /**
  * Shared prose-style markdown component overrides used by both ChatBubble
  * and ExercisePanel. Avoids duplicating these across files.
  */
-export const markdownComponents: Record<string, React.ComponentType<any>> = {
+export const markdownComponents: Components = {
   p: ({ children, ...props }: React.ComponentPropsWithoutRef<'p'>) => (
     <p className="mb-1.5 last:mb-0 leading-relaxed" {...props}>{children}</p>
   ),
