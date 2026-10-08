@@ -95,6 +95,20 @@ describe('classifyResponseError', () => {
     expect(err.code).toBe('server')
     expect(err.retryable).toBe(true)
   })
+
+  it('classifies proxy errors with code, detail, and request_id', async () => {
+    const err = await classifyResponseError(
+      jsonResponse(
+        504,
+        { detail: 'The backend took too long to respond.', code: 'timeout', request_id: 'proxy-req-504' },
+        { 'x-request-id': 'proxy-req-504' },
+      ),
+    )
+    expect(err.status).toBe(504)
+    expect(err.message).toBe('The backend took too long to respond.')
+    expect(err.code).toBe('timeout')
+    expect(err.requestId).toBe('proxy-req-504')
+  })
 })
 
 describe('language code mapping', () => {

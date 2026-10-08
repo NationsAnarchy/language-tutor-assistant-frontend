@@ -293,9 +293,10 @@ export async function classifyResponseError(res: Response): Promise<ApiError> {
       friendlyMessage = detail || "We couldn't find that."
       break
     case 408:
+    case 504:
       code = 'timeout'
       retryable = true
-      friendlyMessage = 'The request took too long. Please try again.'
+      friendlyMessage = detail && detail !== res.statusText ? detail : 'The request took too long. Please try again.'
       break
     case 422:
       code = 'validation'
@@ -307,16 +308,25 @@ export async function classifyResponseError(res: Response): Promise<ApiError> {
       retryable = true
       friendlyMessage = 'Too many requests — take a breath and try again in a moment.'
       break
+    case 502:
+      code = 'server'
+      retryable = true
+      friendlyMessage = detail && detail !== res.statusText ? detail : "Can't reach the backend server."
+      break
     default:
       if (res.status >= 500) {
         code = 'server'
         retryable = true
-        friendlyMessage = "Our tutor is having a moment. Please try again."
+        friendlyMessage = detail && detail !== res.statusText ? detail : "Our tutor is having a moment. Please try again."
       } else if (res.status >= 400) {
         code = 'validation'
         retryable = false
       }
       break
+  }
+
+  if (body?.code && typeof body.code === 'string') {
+    code = body.code as ApiErrorCode
   }
 
   return new ApiError(res.status, friendlyMessage, code, retryable, requestId)
@@ -577,6 +587,11 @@ export async function sendChatStream(
       }
     }
   } finally {
+    try {
+      await reader.cancel()
+    } catch {
+      // Stream may already be closed or cancelled
+    }
     reader.releaseLock()
   }
 

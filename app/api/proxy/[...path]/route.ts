@@ -28,10 +28,19 @@ async function proxyRequest(
   method: string,
   body?: string | null,
 ) {
+  const incomingRequestId = request.headers.get('x-request-id')
+  const requestId =
+    incomingRequestId && /^[A-Za-z0-9_-]{1,64}$/.test(incomingRequestId)
+      ? incomingRequestId
+      : crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+
   // Only forward endpoints the frontend is known to use. Returning the same
   // 404 for everything else avoids confirming which paths exist.
   if (!isAllowedProxyPath(pathname)) {
-    return NextResponse.json({ detail: 'Not found' }, { status: 404 })
+    return NextResponse.json(
+      { detail: 'Not found', code: 'not_found', request_id: requestId },
+      { status: 404, headers: { 'x-request-id': requestId } },
+    )
   }
 
   // Cached audio is public (see lib/proxy-policy). Everything else requires a
@@ -39,7 +48,10 @@ async function proxyRequest(
   if (!isPublicProxyPath(pathname)) {
     const session = await auth()
     if (!session?.user?.id) {
-      return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json(
+        { detail: 'Unauthorized', code: 'auth', request_id: requestId },
+        { status: 401, headers: { 'x-request-id': requestId } },
+      )
     }
   }
 
@@ -48,6 +60,8 @@ async function proxyRequest(
 
   // Forward headers needed by the backend
   const headers = new Headers()
+  headers.set('x-request-id', requestId)
+
   const authHeader = request.headers.get('authorization')
   if (authHeader) headers.set('authorization', authHeader)
 
@@ -60,13 +74,18 @@ async function proxyRequest(
 
   try {
     const fetchInit: RequestInit = { method, headers }
-    if (!streaming) {
-      fetchInit.signal = AbortSignal.timeout(BACKEND_TIMEOUT_MS)
+    if (streaming) {
+      fetchInit.signal = request.signal
+    } else {
+      fetchInit.signal = AbortSignal.any
+        ? AbortSignal.any([request.signal, AbortSignal.timeout(BACKEND_TIMEOUT_MS)])
+        : request.signal
     }
     if (body !== undefined && body !== null) {
       fetchInit.body = body
     }
     const res = await fetch(url, fetchInit)
+    const responseRequestId = res.headers.get('x-request-id') || requestId
 
     // For binary responses, use ArrayBuffer to avoid text corruption
     if (binary) {
@@ -79,6 +98,7 @@ async function proxyRequest(
         headers: {
           'content-type': responseType,
           'content-length': res.headers.get('content-length') || String(arrayBuffer.byteLength),
+          'x-request-id': responseRequestId,
           ...(isStaticAudio
             ? {
                 'accept-ranges': 'bytes',
@@ -99,6 +119,7 @@ async function proxyRequest(
           'cache-control': 'no-cache',
           connection: 'keep-alive',
           'x-accel-buffering': 'no',
+          'x-request-id': responseRequestId,
         },
       })
     }
@@ -108,7 +129,10 @@ async function proxyRequest(
     return new NextResponse(text, {
       status: res.status,
       statusText: res.statusText,
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': responseRequestId,
+      },
     })
   } catch (err) {
     const timedOut = err instanceof Error && err.name === 'TimeoutError'
@@ -117,8 +141,13 @@ async function proxyRequest(
         detail: timedOut
           ? 'The backend took too long to respond.'
           : "Can't reach the backend server.",
+        code: timedOut ? 'timeout' : 'server',
+        request_id: requestId,
       },
-      { status: timedOut ? 504 : 502 },
+      {
+        status: timedOut ? 504 : 502,
+        headers: { 'x-request-id': requestId },
+      },
     )
   }
 }
