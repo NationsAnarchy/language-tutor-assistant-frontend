@@ -33,10 +33,11 @@ The app runs on `http://localhost:3000`.
 | `npm run test:watch` | Vitest in watch mode |
 | `npm run verify` | typecheck → lint → test → build |
 
-CI (`.github/workflows/ci.yml`) runs `npm run verify` steps on every push and
-pull request. Because the automation token used to author this branch cannot
-write workflow files, the workflow is checked in at `docs/ci-workflow.yml` —
-copy it to `.github/workflows/ci.yml` to enable it.
+CI runs the same steps as `npm run verify` (`npm ci`, typecheck, lint, test,
+build) on every push to `main` and on pull requests. Because the automation
+token used to author the current branch cannot write workflow files, the
+workflow is checked in at `docs/ci-workflow.yml` — copy it to
+`.github/workflows/ci.yml` to enable it.
 
 ## Environment Variables
 
