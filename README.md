@@ -170,8 +170,27 @@ route cannot be used to reach the backend anonymously. `/audio/*` is
 deliberately public: a browser `<audio>` element cannot send an
 `Authorization` header, and the filename is an unguessable content hash.
 
-Non-streaming requests time out after 30s; the `/chat` SSE stream is exempt
-because a long LLM + TTS turn can legitimately exceed that.
+Non-streaming requests time out after 120s (`BACKEND_TIMEOUT_MS` in the route
+file) so a hung connection becomes a clean 504 rather than an opaque platform
+timeout. It is deliberately generous — TTS is a Gemini call plus an ffmpeg
+encode and can take a minute on a cold backend. Raise the constant rather than
+removing it if the backend needs longer.
+
+The `/chat` SSE stream is exempt from that timeout entirely, since it stays open
+for the whole LLM turn.
+
+> **Vercel function duration:** `vercel.json` sets no `maxDuration`, so the
+> platform default applies. Long `/chat` streams and slow TTS responses are
+> bounded by that, not by the proxy. If responses are cut off mid-stream, add
+> `export const maxDuration = <seconds>` to `app/api/proxy/[...path]/route.ts`
+> (the maximum allowed depends on your Vercel plan).
+
+#### Local dev is unaffected
+
+`shouldUseProxy()` in `lib/api/index.ts` only routes through the proxy when the
+hostname is **not** `localhost`. Running `npm run dev` against a local backend
+talks to it directly, so none of the proxy rules above apply during local
+integration testing — they only take effect on a deployed (non-localhost) host.
 
 ### Audio Pipeline
 

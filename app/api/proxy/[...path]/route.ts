@@ -10,9 +10,16 @@ import {
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
 
 /** How long to wait on a non-streaming backend request before giving up.
- *  Streaming (SSE) responses are exempt: they can legitimately stay open for
- *  longer than the LLM + TTS round trip. */
-const BACKEND_TIMEOUT_MS = 30_000
+ *
+ *  This only exists to turn a genuinely hung connection into a clean 504
+ *  instead of an opaque platform timeout — it is not a performance budget.
+ *  Keep it generous: TTS synthesis is a Gemini call plus an ffmpeg encode and
+ *  can legitimately take a minute on a cold backend. Raise this (single
+ *  constant) rather than removing it if the backend needs longer.
+ *
+ *  Streaming (SSE) responses are exempt entirely: /chat can stay open for the
+ *  whole LLM turn. */
+const BACKEND_TIMEOUT_MS = 120_000
 
 /** Proxy a request to the backend, preserving the response body type. */
 async function proxyRequest(
