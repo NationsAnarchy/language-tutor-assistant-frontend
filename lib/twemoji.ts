@@ -9,22 +9,36 @@
  * Using twemoji SVG images guarantees identical appearance on every OS and browser.
  */
 
-const TWEMOJI_CDN = 'https://twemoji.maxcdn.com/v/14.0.2/svg'
+// Assets come from jdecked/twemoji, the maintained fork of twitter/twemoji.
+// The original `twemoji.maxcdn.com` host was retired along with MaxCDN, so it
+// is no longer a safe dependency even though it still answers today.
+const TWEMOJI_CDN = 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg'
 
-// Pre-computed codepoints for our flag emojis
-const FLAG_CODEPOINTS: Record<string, string> = {
-  '🇺🇸': '1f1fa-1f1f8',
-  '🇰🇷': '1f1f0-1f1f7',
-  '🇯🇵': '1f1ef-1f1f5',
+/** Variation Selector-16 is not part of a twemoji filename. */
+const VARIATION_SELECTOR_16 = 0xfe0f
+
+const FALLBACK_FLAG = '🇺🇸'
+
+/**
+ * Convert an emoji to its twemoji filename stem, e.g. `🇺🇸` → `1f1fa-1f1f8`.
+ *
+ * Derived from the emoji itself rather than a small lookup table, so a flag
+ * outside the three the app ships with resolves to the correct asset instead
+ * of silently rendering the US flag.
+ */
+export function emojiToCodepoint(emoji: string): string {
+  return Array.from(emoji)
+    .map((char) => char.codePointAt(0))
+    .filter((cp): cp is number => cp !== undefined && cp !== VARIATION_SELECTOR_16)
+    .map((cp) => cp.toString(16))
+    .join('-')
 }
-
-const FALLBACK_FLAG = '🇺🇸' // fallback if unknown
 
 /**
  * Given a flag emoji string, returns the twemoji SVG URL.
- * Falls back to the US flag if the emoji isn't in our map.
+ * Falls back to the US flag if the input has no codepoints.
  */
 export function getFlagSvgUrl(emoji: string): string {
-  const codepoint = FLAG_CODEPOINTS[emoji] ?? FLAG_CODEPOINTS[FALLBACK_FLAG]
+  const codepoint = emojiToCodepoint(emoji) || emojiToCodepoint(FALLBACK_FLAG)
   return `${TWEMOJI_CDN}/${codepoint}.svg`
 }

@@ -494,11 +494,18 @@ export function ChatScreen({
           className="flex items-center gap-1 p-1 rounded-xl bg-muted/50 border border-border/60"
           role="tablist"
           aria-label="Chat mode"
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowLeft') setMode('chat')
+            else if (e.key === 'ArrowRight') setMode('exercise')
+          }}
         >
           <button
             type="button"
+            id="mode-tab-chat"
             role="tab"
             aria-selected={mode === 'chat'}
+            aria-controls="mode-panel-chat"
+            tabIndex={mode === 'chat' ? 0 : -1}
             onClick={() => setMode('chat')}
             disabled={isLoading}
             className={cn(
@@ -513,8 +520,11 @@ export function ChatScreen({
           </button>
           <button
             type="button"
+            id="mode-tab-exercise"
             role="tab"
             aria-selected={mode === 'exercise'}
+            aria-controls="mode-panel-exercise"
+            tabIndex={mode === 'exercise' ? 0 : -1}
             onClick={() => setMode('exercise')}
             disabled={isLoading}
             className={cn(
@@ -596,22 +606,29 @@ export function ChatScreen({
         </main>
       )}
 
-      {/* Exercise panel (mode-dependent) */}
+      {/* Exercise panel (mode-dependent) — the tabpanel for the Exercise tab */}
       {mode === 'exercise' && (
-        <ExercisePanel
-          language={language}
-          onSubmitAnswer={handleExerciseSubmit}
-          onRequestNew={handleRequestNewExercise}
-          isLoading={isLoading || isExerciseLoading}
-          currentExercise={currentExercise}
-          error={exerciseError}
-          onDismissError={() => setExerciseError(null)}
-        />
+        <div id="mode-panel-exercise" role="tabpanel" aria-labelledby="mode-tab-exercise">
+          <ExercisePanel
+            language={language}
+            onSubmitAnswer={handleExerciseSubmit}
+            onRequestNew={handleRequestNewExercise}
+            isLoading={isLoading || isExerciseLoading}
+            currentExercise={currentExercise}
+            error={exerciseError}
+            onDismissError={() => setExerciseError(null)}
+          />
+        </div>
       )}
 
-      {/* Chat input (only in chat mode) */}
+      {/* Chat input (only in chat mode) — the tabpanel for the Chat tab */}
       {mode === 'chat' && (
-        <div className="px-4 py-3 border-t border-border bg-card/70 backdrop-blur-sm">
+        <div
+          id="mode-panel-chat"
+          role="tabpanel"
+          aria-labelledby="mode-tab-chat"
+          className="px-4 py-3 border-t border-border bg-card/70 backdrop-blur-sm"
+        >
           <div className="flex gap-2.5 items-end max-w-3xl mx-auto">
             <textarea
               ref={textareaRef}

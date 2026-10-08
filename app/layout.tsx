@@ -13,7 +13,17 @@ const GOOGLE_FONTS_URL =
 export const metadata: Metadata = {
   title: 'LinguaAI — Trilingual Tutor',
   description: 'Practice English, Korean, and Japanese with an AI tutor',
-  generator: 'v0.app',
+  applicationName: 'LinguaAI',
+  // The icon files shipped in public/ were never referenced, so only the
+  // implicit /favicon.ico request worked.
+  icons: {
+    icon: [
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png' }],
+  },
 }
 
 export const viewport: Viewport = {
