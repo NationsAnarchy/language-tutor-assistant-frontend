@@ -9,7 +9,14 @@ import type { Language, Level } from '@/lib/types'
  * `app/page.tsx` has always *read* this key, but nothing ever wrote to it, so
  * the "resume last session" path was dead. These helpers close that loop.
  */
-const STORAGE_KEY = 'linguaai_active_session'
+const BASE_STORAGE_KEY = 'linguaai_active_session'
+
+export function getActiveSessionStorageKey(userId?: string | null): string {
+  if (userId && userId.trim()) {
+    return `${BASE_STORAGE_KEY}_${userId.trim()}`
+  }
+  return BASE_STORAGE_KEY
+}
 
 export interface ActiveSession {
   language: Language
@@ -17,10 +24,11 @@ export interface ActiveSession {
   sessionId: string
 }
 
-export function readActiveSession(): ActiveSession | null {
+export function readActiveSession(userId?: string | null): ActiveSession | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const key = getActiveSessionStorageKey(userId)
+    const raw = localStorage.getItem(key)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<ActiveSession> | null
     if (!parsed || typeof parsed.sessionId !== 'string' || !parsed.sessionId) {
@@ -37,21 +45,27 @@ export function readActiveSession(): ActiveSession | null {
   }
 }
 
-export function saveActiveSession(session: ActiveSession): void {
+export function saveActiveSession(session: ActiveSession, userId?: string | null): void {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
+    const key = getActiveSessionStorageKey(userId)
+    localStorage.setItem(key, JSON.stringify(session))
   } catch {
     // Storage can be unavailable (private browsing, quota). Resuming is a
     // convenience, so failing silently is fine.
   }
 }
 
-export function clearActiveSession(): void {
+export function clearActiveSession(userId?: string | null): void {
   if (typeof window === 'undefined') return
   try {
-    localStorage.removeItem(STORAGE_KEY)
+    const key = getActiveSessionStorageKey(userId)
+    localStorage.removeItem(key)
+    if (userId) {
+      localStorage.removeItem(BASE_STORAGE_KEY)
+    }
   } catch {
     // ignore
   }
 }
+

@@ -4,6 +4,7 @@ import { signIn } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { LinguaLogo } from './lingua-logo'
 import { usePreventDoubleClick } from '@/lib/hooks/use-prevent-double-click'
+import { getFlagSvgUrl } from '@/lib/twemoji'
 
 function GoogleIcon() {
   return (
@@ -61,15 +62,30 @@ export function LoginScreen() {
           aria-label="Supported languages"
         >
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-card text-xs font-medium text-foreground">
-            <span role="img" aria-label="American flag">🇺🇸</span>
+            <img
+              src={getFlagSvgUrl('🇺🇸')}
+              alt=""
+              className="inline-block size-3.5 align-middle"
+              draggable={false}
+            />
             English
           </div>
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-card text-xs font-medium text-foreground">
-            <span role="img" aria-label="Korean flag">🇰🇷</span>
+            <img
+              src={getFlagSvgUrl('🇰🇷')}
+              alt=""
+              className="inline-block size-3.5 align-middle"
+              draggable={false}
+            />
             한국어
           </div>
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-card text-xs font-medium text-foreground">
-            <span role="img" aria-label="Japanese flag">🇯🇵</span>
+            <img
+              src={getFlagSvgUrl('🇯🇵')}
+              alt=""
+              className="inline-block size-3.5 align-middle"
+              draggable={false}
+            />
             日本語
           </div>
         </div>

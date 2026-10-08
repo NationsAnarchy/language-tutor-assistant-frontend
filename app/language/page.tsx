@@ -5,8 +5,10 @@ import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { LanguagePicker } from '@/components/language/language-picker'
 import { Spinner } from '@/components/ui/spinner'
-import { createSession, listSessions } from '@/lib/api'
+import { clearActiveSession } from '@/lib/active-session'
+import { clearTokenCache, createSession, listSessions } from '@/lib/api'
 import { byMostRecent, mapBackendSession } from '@/lib/mappers'
+import { toast } from '@/lib/toast'
 import type { Language, Level, Session } from '@/lib/types'
 
 export default function LanguagePage() {
@@ -14,6 +16,7 @@ export default function LanguagePage() {
   const router = useRouter()
   const [existingSessions, setExistingSessions] = useState<Session[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   const loadUserSessions = useCallback(async () => {
     setSessionsLoading(true)
@@ -39,33 +42,42 @@ export default function LanguagePage() {
   }, [status, loadUserSessions, router])
 
   const handleStart = async (lang: Language, lvl: Level) => {
+    if (submitting) return
     const matching = existingSessions
       .filter((s) => s.language === lang && s.level === lvl && s.session_id)
       .sort(byMostRecent)
     const existing = matching[0]
     if (existing?.session_id) {
+      setSubmitting(true)
       router.push(`/chat?session=${existing.session_id}`)
       return
     }
+    setSubmitting(true)
     try {
       const result = await createSession(lang, lvl)
       router.push(`/chat?session=${result.session_id}`)
     } catch {
-      // Fallback
+      toast.error("Couldn't start the practice session. Please try again.")
+      setSubmitting(false)
     }
   }
 
   const handleStartFresh = async (lang: Language, lvl: Level) => {
+    if (submitting) return
+    setSubmitting(true)
     try {
       const result = await createSession(lang, lvl)
       router.push(`/chat?session=${result.session_id}`)
     } catch {
-      // Fallback
+      toast.error("Couldn't start the practice session. Please try again.")
+      setSubmitting(false)
     }
   }
 
   const handleSignOut = () => {
     setExistingSessions([])
+    clearActiveSession(session?.user?.id)
+    clearTokenCache()
     signOut({ callbackUrl: '/login' })
   }
 
@@ -90,6 +102,7 @@ export default function LanguagePage() {
       user={user}
       existingSessions={existingSessions}
       loading={sessionsLoading}
+      submitting={submitting}
       onStart={handleStart}
       onStartFresh={handleStartFresh}
       onSignOut={handleSignOut}

@@ -83,6 +83,41 @@ describe('active session storage', () => {
     expect(() => clearActiveSession()).not.toThrow()
   })
 
+  describe('user-scoped session storage', () => {
+    it('scopes storage by user ID and prevents cross-user collisions', () => {
+      const storage = createStorage()
+      useStorage(storage)
+
+      const userASession = { language: 'korean', level: 'intermediate', sessionId: 'session-a' } as const
+      const userBSession = { language: 'japanese', level: 'beginner', sessionId: 'session-b' } as const
+
+      saveActiveSession(userASession, 'user-a')
+      saveActiveSession(userBSession, 'user-b')
+
+      expect(storage.getItem('linguaai_active_session_user-a')).toBe(JSON.stringify(userASession))
+      expect(storage.getItem('linguaai_active_session_user-b')).toBe(JSON.stringify(userBSession))
+
+      expect(readActiveSession('user-a')).toEqual(userASession)
+      expect(readActiveSession('user-b')).toEqual(userBSession)
+      // Different user cannot read another user's session
+      expect(readActiveSession('user-c')).toBeNull()
+    })
+
+    it('clears specific user session and any legacy key', () => {
+      const storage = createStorage()
+      useStorage(storage)
+
+      saveActiveSession(koreanSession, 'user-a')
+      storage.setItem(STORAGE_KEY, JSON.stringify(koreanSession))
+
+      clearActiveSession('user-a')
+
+      expect(readActiveSession('user-a')).toBeNull()
+      expect(storage.getItem('linguaai_active_session_user-a')).toBeNull()
+      expect(storage.getItem(STORAGE_KEY)).toBeNull()
+    })
+  })
+
   describe('without a browser environment', () => {
     beforeEach(() => {
       vi.stubGlobal('window', undefined)

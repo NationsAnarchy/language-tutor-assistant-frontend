@@ -15,6 +15,7 @@ import {
 import { audioManager } from "@/lib/audio-manager";
 import { clearActiveSession, saveActiveSession } from "@/lib/active-session";
 import { mapBackendSession, mapChatHistory } from "@/lib/mappers";
+import { toast } from "@/lib/toast";
 import type { Language, Level, Message, Session } from "@/lib/types";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -22,6 +23,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 function ChatPageInner() {
   const { data: session, status, update: updateSession } = useSession();
+  const userId = session?.user?.id;
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionIdParam = searchParams.get("session");
@@ -67,11 +69,18 @@ function ChatPageInner() {
       setSessions(sessionsList.map(mapBackendSession));
 
       // Remember this conversation so the next visit can resume it (app/page.tsx).
-      saveActiveSession({ language, level, sessionId: sessionIdParam });
+      saveActiveSession({ language, level, sessionId: sessionIdParam }, userId);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        clearActiveSession(userId);
+        toast.error("You don't have permission to access this session.", { id: "forbidden-session" });
+        router.replace("/language");
+        return;
+      }
       // Only redirect on a true 404 — session doesn't exist
       if (err instanceof ApiError && err.status === 404) {
-        clearActiveSession();
+        clearActiveSession(userId);
+        toast.error("Session not found.", { id: "session-not-found" });
         router.replace("/language");
         return;
       }
@@ -84,7 +93,7 @@ function ChatPageInner() {
       setSwitchingSession(false);
       switchingRef.current = false;
     }
-  }, [sessionIdParam, router]);
+  }, [sessionIdParam, router, userId]);
 
   // Load data immediately on mount — don't wait for auth rehydration (Issue #36)
   // The API calls are independently authenticated; if the session expired, loadData
@@ -93,6 +102,13 @@ function ChatPageInner() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch; state updates happen after `await`, not during the effect
     loadData();
   }, [loadData]);
+
+  // Keep user-scoped active session key synced once NextAuth session resolves
+  useEffect(() => {
+    if (userId && sessionId && language && level) {
+      saveActiveSession({ language, level, sessionId }, userId);
+    }
+  }, [userId, sessionId, language, level]);
 
   // Detect BFCache restore (tab close/reopen) and rehydrate the page (Issue #36)
   // When a page is restored from the back-forward cache, React effects don't
@@ -158,7 +174,7 @@ function ChatPageInner() {
       setLanguage(language);
       setLevel(level);
       setSessionId(targetSessionId);
-      saveActiveSession({ language, level, sessionId: targetSessionId });
+      saveActiveSession({ language, level, sessionId: targetSessionId }, userId);
 
       // Push a new history entry so back/forward works between sessions.
       // Skip pushState when this is a popstate-triggered switch (back/forward).
@@ -166,14 +182,20 @@ function ChatPageInner() {
         window.history.pushState({ sessionId: targetSessionId }, '', `/chat?session=${targetSessionId}`);
       }
     } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
+      if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
+        if (err.status === 403) {
+          toast.error("You don't have permission to access this session.", { id: "forbidden-session" });
+        } else {
+          toast.error("Session not found.", { id: "session-not-found" });
+        }
+        clearActiveSession(userId);
         router.replace("/language");
       }
     } finally {
       setSwitchingSession(false);
       switchingRef.current = false;
     }
-  }, [router]);
+  }, [router, userId]);
 
   /** Handle browser back/forward — reload data for the session from history state. */
   const handlePopState = useCallback((event: PopStateEvent) => {
@@ -211,6 +233,7 @@ function ChatPageInner() {
     const ok = await renameSession(targetSessionId, newTitle);
     if (!ok) {
       // Rollback on failure — refresh from backend
+      toast.error("Couldn't rename the conversation. Please try again.");
       refreshSessions();
     }
   }, [refreshSessions]);
@@ -224,13 +247,14 @@ function ChatPageInner() {
     const ok = await deleteSession(targetSessionId);
     if (!ok) {
       // Rollback on failure — refresh from backend
+      toast.error("Couldn't delete the conversation. Please try again.");
       refreshSessions();
       return;
     }
 
     if (wasActive) {
       // The remembered conversation no longer exists
-      clearActiveSession();
+      clearActiveSession(userId);
       // Navigate to the most recent remaining session
       const remaining = [...sessions].filter(s => s.session_id !== targetSessionId);
       const sorted = remaining
@@ -242,7 +266,7 @@ function ChatPageInner() {
         router.push("/language");
       }
     }
-  }, [sessions, refreshSessions, router]);
+  }, [sessions, refreshSessions, router, userId]);
 
   const handleSelectSession = (selectedSessionId: string) => {
     if (selectedSessionId === sessionId || switchingRef.current) return;
@@ -267,7 +291,7 @@ function ChatPageInner() {
   const handleSignOut = () => {
     // Stop any playing audio before signing out (Issue #42)
     audioManager.stopAll();
-    clearActiveSession();
+    clearActiveSession(userId);
     clearTokenCache();
     signOut({ callbackUrl: "/login" });
   };

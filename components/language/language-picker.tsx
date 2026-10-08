@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowRight, RefreshCcw, CheckCircle2, LogOut } from 'lucide-react'
+import { ArrowRight, RefreshCcw, CheckCircle2, LogOut, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getFlagSvgUrl } from '@/lib/twemoji'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ interface LanguagePickerProps {
   user: User
   existingSessions: Session[]
   loading?: boolean
+  submitting?: boolean
   onStart: (language: Language, level: Level) => void
   onStartFresh: (language: Language, level: Level) => void
   onSignOut: () => void
@@ -97,10 +98,18 @@ function LanguageCard({
   )
 }
 
-export function LanguagePicker({ user, existingSessions, loading, onStart, onStartFresh, onSignOut }: LanguagePickerProps) {
+export function LanguagePicker({
+  user,
+  existingSessions,
+  loading,
+  submitting,
+  onStart,
+  onStartFresh,
+  onSignOut,
+}: LanguagePickerProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<Language | null>(null)
   const [selectedLevel, setSelectedLevel] = useState<Level | null>(null)
-  const isDisabled = loading
+  const isDisabled = !!(loading || submitting)
 
   // Check if ANY session exists for selected language+level (not just the latest)
   // so Continue works across all difficulty levels (Issue #27 follow-up)
@@ -242,7 +251,12 @@ export function LanguagePicker({ user, existingSessions, loading, onStart, onSta
               disabled={!selectedLanguage || !selectedLevel || isDisabled}
               onClick={handleStart}
             >
-              {isResume ? (
+              {submitting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  Starting session...
+                </>
+              ) : isResume ? (
                 <>
                   <RefreshCcw className="size-4" aria-hidden="true" />
                   Continue {selectedLangMeta?.label}
@@ -262,11 +276,11 @@ export function LanguagePicker({ user, existingSessions, loading, onStart, onSta
               <p className="text-xs text-muted-foreground text-center h-5">
                 <button
                   type="button"
-                  onClick={() => { if (selectedLanguage && selectedLevel) onStartFresh(selectedLanguage, selectedLevel) }}
+                  onClick={() => { if (selectedLanguage && selectedLevel && !isDisabled) onStartFresh(selectedLanguage, selectedLevel) }}
                   disabled={isDisabled}
                   className="hover:text-foreground transition-colors underline underline-offset-2 hover:no-underline disabled:opacity-40 disabled:pointer-events-none"
                 >
-                  Start a fresh session instead
+                  {submitting ? 'Starting session...' : 'Start a fresh session instead'}
                 </button>
               </p>
             ) : (
