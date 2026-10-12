@@ -29,12 +29,7 @@ export function CorrectionText({ segments }: CorrectionTextProps) {
                 {seg.content}
               </span>
               <span
-                className="px-1.5 py-0.5 rounded-md text-xs font-semibold leading-tight"
-                style={{
-                  backgroundColor: 'var(--correction-bg)',
-                  color: 'var(--correction-text)',
-                  border: '1px solid var(--correction-border)',
-                }}
+                className="px-1.5 py-0.5 rounded-md text-xs font-semibold leading-tight bg-correction-bg text-correction-text border border-correction-border"
               >
                 {seg.correction ?? seg.content}
               </span>

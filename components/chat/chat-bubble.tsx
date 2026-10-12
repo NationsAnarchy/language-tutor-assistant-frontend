@@ -78,12 +78,7 @@ function ChatBubbleComponent({ message, isAudioLoading, audioFailureHint, onRetr
           ) : hasCorrections && message.segments ? (
             <div>
               <div
-                className="inline-flex items-center gap-1.5 text-[11px] font-semibold mb-2.5 px-2 py-1 rounded-full"
-                style={{
-                  backgroundColor: 'var(--correction-bg)',
-                  color: 'var(--correction-text)',
-                  border: '1px solid var(--correction-border)',
-                }}
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold mb-2.5 px-2 py-1 rounded-full bg-correction-bg text-correction-text border border-correction-border"
                 aria-label="This message contains a correction"
               >
                 <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">

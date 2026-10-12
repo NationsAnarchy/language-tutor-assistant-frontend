@@ -85,6 +85,31 @@ describe('ChatBubble component', () => {
 
     expect(html).toContain('Play audio')
   })
+
+  it('renders correction badge and segments with Tailwind correction classes', () => {
+    const message: Message = {
+      id: 'msg-5',
+      role: 'agent',
+      content: 'I went to school yesterday.',
+      segments: [
+        { type: 'text', content: 'I ' },
+        { type: 'correction', content: 'go', correction: 'went' },
+        { type: 'text', content: ' to school yesterday.' },
+      ],
+      timestamp: new Date(),
+    }
+
+    const html = renderToStaticMarkup(
+      <ChatBubble
+        message={message}
+      />
+    )
+
+    expect(html).toContain('Correction')
+    expect(html).toContain('bg-correction-bg')
+    expect(html).toContain('text-correction-text')
+    expect(html).toContain('border-correction-border')
+  })
 })
 
 describe('SessionItem component', () => {
