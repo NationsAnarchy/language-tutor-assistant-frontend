@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import { Send, BookOpen, MessageSquare, Sparkles, Square, ArrowDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -9,18 +8,10 @@ import { TopBar } from '../layout/top-bar'
 import { ChatBubble } from './chat-bubble'
 import { ChatBubbleError } from './chat-bubble-error'
 import { ExercisePanel } from './exercise-panel'
-import {
-  sendChatStream,
-  getSession,
-  synthesizeAudio,
-  invalidateSessionCache,
-  clearTokenCache,
-  revokeAudioBlobUrls,
-  ApiError,
-} from '@/lib/api'
-import { mapChatHistory } from '@/lib/mappers'
-import { toast } from '@/lib/toast'
-import type { Language, Level, User, Message, ChatMode } from '@/lib/types'
+import { useChatMessages } from '@/lib/hooks/use-chat-messages'
+import { useTtsAudio } from '@/lib/hooks/use-tts-audio'
+import { useExerciseMode } from '@/lib/hooks/use-exercise-mode'
+import type { Language, Level, User, Message } from '@/lib/types'
 import { CHAT_PLACEHOLDERS } from '@/lib/types'
 
 // Starter prompt suggestions per language
@@ -28,14 +19,6 @@ const STARTER_PROMPTS: Record<Language, string[]> = {
   korean: ['안녕하세요 — introduce yourself', '날씨에 대해 이야기해요', '식당을 추천해주세요'],
   japanese: ['自己紹介をしてください', '趣味について話しましょう', 'おすすめの場所を教えて'],
   english: ['Introduce yourself', 'Describe your daily routine', 'Talk about a hobby'],
-}
-
-/** Per-message error state attached to a failed user message. */
-interface MessageError {
-  message: string
-  retryable: boolean
-  /** The original content to resend on retry. */
-  originalContent: string
 }
 
 interface ChatScreenProps {
@@ -65,41 +48,58 @@ export function ChatScreen({
   onToggleSidebar,
   sidebarOpen,
 }: ChatScreenProps) {
-  const router = useRouter()
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [inputValue, setInputValue] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [mode, setMode] = useState<ChatMode>('chat')
-  const [currentExercise, setCurrentExercise] = useState<{ prompt: string; audioUrl?: string } | undefined>(undefined)
-  const [isExerciseLoading, setIsExerciseLoading] = useState(false)
-  /** Map of messageId → error info for failed user messages. */
-  const [messageErrors, setMessageErrors] = useState<Map<string, MessageError>>(new Map())
-  /** Audio failure hints: messageId → hint text. */
-  const [audioFailures, setAudioFailures] = useState<Map<string, string>>(new Map())
-  /** Exercise-panel-local error (shown inline, not as a toast). */
-  const [exerciseError, setExerciseError] = useState<string | null>(null)
 
-  // Reset conversation state when the initialMessages prop changes (i.e. the
-  // parent loaded a different conversation). An empty list is valid for a new
-  // session (fixes Issue #10). Adjusting state during render — rather than in
-  // an effect — avoids an extra commit and a cascading re-render.
-  const [syncedInitialMessages, setSyncedInitialMessages] = useState(initialMessages)
-  if (syncedInitialMessages !== initialMessages) {
-    setSyncedInitialMessages(initialMessages)
-    setMessages(initialMessages)
-    setMessageErrors(new Map())
-    setAudioFailures(new Map())
-  }
+  // ── Custom Hooks ───────────────────────────────────────────────────────────
+  const {
+    audioLoadingId,
+    audioFailures,
+    requestAudio,
+    handleRetryAudio,
+    clearAudioFailures,
+  } = useTtsAudio({
+    sessionId,
+    onAudioReady: (msgId, url) => attachAudioToMessage(msgId, url),
+  })
 
+  const {
+    messages,
+    isLoading,
+    messageErrors,
+    sendMessage,
+    handleRetry,
+    handleDismissError,
+    handleStopGenerating,
+    submitExerciseAnswer,
+    attachAudioToMessage,
+  } = useChatMessages({
+    sessionId,
+    language,
+    initialMessages,
+    onRequestAudio: requestAudio,
+    onResetSession: clearAudioFailures,
+  })
+
+  const {
+    mode,
+    setMode,
+    currentExercise,
+    isExerciseLoading,
+    exerciseError,
+    setExerciseError,
+    requestNewExercise,
+  } = useExerciseMode({
+    sessionId,
+    language,
+  })
+
+  // ── Scroll & Layout Refs ───────────────────────────────────────────────────
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLElement>(null)
   const [showScrollBottom, setShowScrollBottom] = useState(false)
   const isNearBottomRef = useRef(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const abortRef = useRef<AbortController | null>(null)
-  const audioAbortRef = useRef<AbortController | null>(null)
   const prevLoadingRef = useRef(false)
-  const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null)
 
   // Track scroll position to prevent snapping away if user scrolled up
   const handleScroll = useCallback(() => {
@@ -117,54 +117,19 @@ export function ChatScreen({
     isNearBottomRef.current = true
   }, [])
 
-  // Cancel in-flight request when session changes or component unmounts (Issue #14)
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort()
-      audioAbortRef.current?.abort()
-      // Release the MP3 blob URLs minted for this conversation. They pin the
-      // whole file in memory until revoked, so without this they accumulated
-      // for the lifetime of the tab.
-      revokeAudioBlobUrls()
-    }
-  }, [sessionId])
-
-  // Fallback: if we have a sessionId but no messages, try loading history from backend.
-  // Keyed on sessionId so switching to a new (empty) session clears stale messages.
-  useEffect(() => {
-    if (!sessionId || sessionId === 'demo-session') return
-
-    // Check if initialMessages already covered this session
-    if (initialMessages.length > 0) return
-    
-    let cancelled = false
-    
-    getSession(sessionId).then((data) => {
-      if (cancelled) return
-      const history = mapChatHistory(data.chat_history)
-      if (history.length > 0) {
-        setMessages(history)
-      }
-    }).catch(() => {/* ignore */})
-    
-    return () => { cancelled = true }
-  }, [sessionId, initialMessages])
-
   // Smart auto-scroll: only scrolls if user is already near bottom.
-  // Instant scroll during streaming avoids queuing hundreds of smooth-scroll frames.
   useEffect(() => {
     if (isNearBottomRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: isLoading ? 'auto' : 'smooth' })
     }
   }, [messages, isLoading])
 
-  // Notify parent of loading state (Issue #35)
+  // Notify parent of loading state
   useEffect(() => {
     onLoadingChange?.(isLoading)
   }, [isLoading, onLoadingChange])
 
-  // Autofocus chat input after agent response is rendered (Issue #39)
-  // No need to wait for audio synthesis — just the text response.
+  // Autofocus chat input after agent response is rendered
   useEffect(() => {
     if (prevLoadingRef.current && !isLoading && mode === 'chat') {
       textareaRef.current?.focus()
@@ -180,355 +145,10 @@ export function ChatScreen({
     el.style.height = `${Math.min(el.scrollHeight, 128)}px`
   }, [inputValue])
 
-  /**
-   * Handle an ApiError: show toast for global events (auth, network),
-   * and return a user-friendly message for inline display.
-   */
-  const handleError = useCallback((err: unknown): { message: string; retryable: boolean } => {
-    if (err instanceof ApiError) {
-      switch (err.code) {
-        case 'auth':
-          clearTokenCache()
-          toast.error(err.message, {
-            description: 'Redirecting you to sign in…',
-            duration: 3000,
-          })
-          // Redirect after a short delay so the user sees the toast
-          setTimeout(() => router.replace('/login'), 1500)
-          return { message: err.message, retryable: false }
-
-        case 'network':
-          // Retrying is offered inline on the failed message (ChatBubbleError),
-          // which can actually resend it. A toast action here had no handler.
-          toast.error(err.message)
-          return { message: err.message, retryable: true }
-
-        case 'timeout':
-          toast.warning(err.message)
-          return { message: err.message, retryable: true }
-
-        case 'server':
-          toast.error(err.message)
-          return { message: err.message, retryable: true }
-
-        case 'rate_limit':
-          toast.warning(err.message)
-          return { message: err.message, retryable: true }
-
-        case 'forbidden':
-          toast.error(err.message)
-          return { message: err.message, retryable: false }
-
-        case 'not_found':
-          toast.error(err.message)
-          return { message: err.message, retryable: false }
-
-        default:
-          toast.error(err.message || 'Something went wrong.')
-          return { message: err.message || 'Something went wrong.', retryable: false }
-      }
-    }
-
-    // Fallback for non-ApiError
-    const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
-    toast.error(msg)
-    return { message: msg, retryable: false }
-  }, [router])
-
-  const sendMessage = useCallback(async (content: string, retryOfId?: string) => {
-    if (!content.trim()) return
-
-    const userMsg: Message = {
-      id: retryOfId || Date.now().toString(),
-      role: 'user',
-      content,
-      timestamp: new Date(),
-    }
-
-    // If retrying, remove the old error
-    if (retryOfId) {
-      setMessageErrors((prev) => {
-        const next = new Map(prev)
-        next.delete(retryOfId)
-        return next
-      })
-      // Replace the old message in the list
-      setMessages((prev) => prev.map((m) => m.id === retryOfId ? userMsg : m))
-    } else {
-      setMessages((prev) => [...prev, userMsg])
-      setInputValue('')
-    }
-
-    setIsLoading(true)
-
-    try {
-      if (!sessionId || sessionId === 'demo-session') {
-        // Demo fallback when backend isn't available
-        await new Promise((r) => setTimeout(r, 1800))
-        const agentMsg: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'agent',
-          content:
-            language === 'korean'
-              ? '백엔드에 연결되지 않았어요. uvicorn app.main:app --reload 로 백엔드를 시작해 주세요.'
-              : language === 'japanese'
-                ? 'バックエンドに接続できませんでした。uvicorn app.main:app --reload でバックエンドを起動してください。'
-                : 'Backend not connected. Start it with: uvicorn app.main:app --reload',
-          timestamp: new Date(),
-        }
-        setMessages((prev) => [...prev, agentMsg])
-      } else {
-        // Abort any previous in-flight request (Issue #14)
-        abortRef.current?.abort()
-        const controller = new AbortController()
-        abortRef.current = controller
-
-        // Placeholder agent message — tokens stream into it
-        const msgId = (Date.now() + 1).toString()
-        const agentMsg: Message = {
-          id: msgId,
-          role: 'agent',
-          content: '',
-          timestamp: new Date(),
-        }
-        setMessages((prev) => [...prev, agentMsg])
-
-        // Stream tokens in real time via SSE
-        const streamingResult = await sendChatStream(
-          sessionId,
-          content,
-          (event) => {
-            if (event.type === 'token' && event.content) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === msgId ? { ...m, content: m.content + event.content } : m,
-                ),
-              )
-            }
-          },
-          controller.signal,
-        )
-
-        // Invalidate cache so next visit to this session gets fresh history
-        invalidateSessionCache(sessionId)
-        setIsLoading(false)
-
-        // Use a fresh AbortController for each TTS request.
-        // Pass the message content so the backend can match the exact message
-        // and set audio_hash correctly, even if concurrent TTS requests exist.
-        const audioController = new AbortController()
-        audioAbortRef.current = audioController
-
-        // Show audio loading indicator, then synthesize in background (Issue #22)
-        setAudioLoadingId(msgId)
-        synthesizeAudio(sessionId, streamingResult.reply, audioController.signal).then((url) => {
-          if (audioController.signal.aborted) return
-          setAudioLoadingId(null)
-          if (url) {
-            setMessages((prev) =>
-              prev.map((m) => (m.id === msgId ? { ...m, audioUrl: url } : m)),
-            )
-          }
-        }).catch((audioErr) => {
-          if (audioController.signal.aborted) return
-          setAudioLoadingId(null)
-          // Show inline audio failure hint instead of silently dropping
-          const hint = audioErr instanceof ApiError
-            ? "Audio couldn't be generated right now."
-            : 'Audio unavailable.'
-          setAudioFailures((prev) => new Map(prev).set(msgId, hint))
-        })
-        return
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        // User-initiated cancel (session switch) — don't show error
-        return
-      }
-      const { message, retryable } = handleError(err)
-      setMessageErrors((prev) => new Map(prev).set(userMsg.id, {
-        message,
-        retryable,
-        originalContent: content,
-      }))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [sessionId, language, handleError])
-
-  const handleRetry = useCallback((messageId: string) => {
-    const errorInfo = messageErrors.get(messageId)
-    if (!errorInfo) return
-    sendMessage(errorInfo.originalContent, messageId)
-  }, [messageErrors, sendMessage])
-
-  const handleDismissError = useCallback((messageId: string) => {
-    setMessageErrors((prev) => {
-      const next = new Map(prev)
-      next.delete(messageId)
-      return next
-    })
-  }, [])
-
-  const handleStopGenerating = useCallback(() => {
-    abortRef.current?.abort()
-    setIsLoading(false)
-    toast.info('Response stopped.')
-  }, [])
-
-  const handleRetryAudio = useCallback((messageId: string, content: string) => {
-    if (!sessionId) return
-    setAudioFailures((prev) => {
-      const next = new Map(prev)
-      next.delete(messageId)
-      return next
-    })
-    setAudioLoadingId(messageId)
-    const audioController = new AbortController()
-    audioAbortRef.current = audioController
-    synthesizeAudio(sessionId, content, audioController.signal)
-      .then((url) => {
-        if (audioController.signal.aborted) return
-        setAudioLoadingId(null)
-        if (url) {
-          setMessages((prev) =>
-            prev.map((m) => (m.id === messageId ? { ...m, audioUrl: url } : m)),
-          )
-        }
-      })
-      .catch((audioErr) => {
-        if (audioController.signal.aborted) return
-        setAudioLoadingId(null)
-        const hint = audioErr instanceof ApiError
-          ? "Audio couldn't be generated right now."
-          : 'Audio unavailable.'
-        setAudioFailures((prev) => new Map(prev).set(messageId, hint))
-      })
-  }, [sessionId])
-
   const handleSend = () => {
     if (!inputValue.trim() || isLoading) return
     sendMessage(inputValue)
-  }
-
-  const handleExerciseSubmit = async (answer: string) => {
-    if (!sessionId || sessionId === 'demo-session') {
-      // Demo fallback
-      const userMsg: Message = {
-        id: Date.now().toString(),
-        role: 'user',
-        content: answer,
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, userMsg])
-      setIsLoading(true)
-      await new Promise((r) => setTimeout(r, 1600))
-      const feedbackMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'agent',
-        content: 'Backend not available — start it with: uvicorn app.main:app --reload',
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, feedbackMsg])
-      setIsLoading(false)
-      return
-    }
-
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: answer,
-      timestamp: new Date(),
-    }
-    setMessages((prev) => [...prev, userMsg])
-    setIsLoading(true)
-
-    try {
-      // Abort any in-flight request so switching sessions can't leave this one running
-      abortRef.current?.abort()
-      const controller = new AbortController()
-      abortRef.current = controller
-
-      // Submit exercise answer as a chat message — the agent handles intent routing
-      const feedbackMsgId = (Date.now() + 1).toString()
-      const feedbackMsg: Message = {
-        id: feedbackMsgId,
-        role: 'agent',
-        content: '',
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, feedbackMsg])
-
-      // Streamed tokens already fill the feedback bubble, so the assembled
-      // reply isn't needed here.
-      await sendChatStream(
-        sessionId,
-        answer,
-        (event) => {
-          if (event.type === 'token' && event.content) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === feedbackMsgId ? { ...m, content: m.content + event.content } : m,
-              ),
-            )
-          }
-        },
-        controller.signal,
-      )
-      invalidateSessionCache(sessionId)
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      handleError(err)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleRequestNewExercise = async () => {
-    setIsExerciseLoading(true)
-    setCurrentExercise(undefined)
-
-    if (!sessionId || sessionId === 'demo-session') {
-      await new Promise((r) => setTimeout(r, 1200))
-      setCurrentExercise({
-        prompt: language === 'korean'
-          ? '다음 문장을 한국어로 번역하세요: "I went to the market yesterday to buy vegetables."'
-          : language === 'japanese'
-            ? '次の文章を日本語に訳してください: "I went to the market yesterday to buy vegetables."'
-            : 'Translate the following sentence into your target language: "I went to the market yesterday to buy vegetables."',
-      })
-      setIsExerciseLoading(false)
-      return
-    }
-
-    setExerciseError(null)
-    try {
-      // Request a new exercise via the chat endpoint
-      const exercisePrompt = language === 'korean'
-        ? '새로운 연습 문제를 만들어 주세요.'
-        : language === 'japanese'
-          ? '新しい練習問題を作ってください。'
-          : 'Please generate a new exercise for me.'
-
-      abortRef.current?.abort()
-      const controller = new AbortController()
-      abortRef.current = controller
-
-      const exResult = await sendChatStream(
-        sessionId,
-        exercisePrompt,
-        () => {}, // no-op — exercise panel renders the full prompt at the end
-        controller.signal,
-      )
-      setCurrentExercise({ prompt: exResult.reply })
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      // Show error inline in the exercise panel instead of as a toast
-      const msg = err instanceof ApiError ? err.message : 'Failed to generate exercise. Please try again.'
-      setExerciseError(msg)
-    } finally {
-      setIsExerciseLoading(false)
-    }
+    setInputValue('')
   }
 
   const isEmpty = messages.length === 0
@@ -570,7 +190,7 @@ export function ChatScreen({
               'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               mode === 'chat'
                 ? 'bg-background text-foreground shadow-sm border border-border/60'
-                : 'text-muted-foreground hover:text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
             <MessageSquare className="size-3.5" aria-hidden="true" />
@@ -589,7 +209,7 @@ export function ChatScreen({
               'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               mode === 'exercise'
                 ? 'bg-background text-foreground shadow-sm border border-border/60'
-                : 'text-muted-foreground hover:text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
             <BookOpen className="size-3.5" aria-hidden="true" />
@@ -626,7 +246,10 @@ export function ChatScreen({
               <button
                 key={prompt}
                 type="button"
-                onClick={() => sendMessage(prompt)}
+                onClick={() => {
+                  sendMessage(prompt)
+                  setInputValue('')
+                }}
                 disabled={isLoading}
                 className="px-3.5 py-2 rounded-xl border border-border bg-card text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-accent transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shadow-xs"
               >
@@ -687,8 +310,8 @@ export function ChatScreen({
         <div id="mode-panel-exercise" role="tabpanel" aria-labelledby="mode-tab-exercise">
           <ExercisePanel
             language={language}
-            onSubmitAnswer={handleExerciseSubmit}
-            onRequestNew={handleRequestNewExercise}
+            onSubmitAnswer={submitExerciseAnswer}
+            onRequestNew={requestNewExercise}
             isLoading={isLoading || isExerciseLoading}
             currentExercise={currentExercise}
             error={exerciseError}
