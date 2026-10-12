@@ -12,6 +12,7 @@ import {
   type User,
   LANGUAGES,
   LEVELS,
+  LANGUAGE_META,
 } from '@/lib/types'
 import { LinguaLogo } from '../auth/lingua-logo'
 
@@ -139,7 +140,7 @@ export function LanguagePicker({
     }
   }
 
-  const selectedLangMeta = LANGUAGES.find((l) => l.value === selectedLanguage)
+  const selectedLangMeta = selectedLanguage ? LANGUAGE_META[selectedLanguage] : undefined
 
   return (
     <main className="min-h-screen bg-background flex flex-col">

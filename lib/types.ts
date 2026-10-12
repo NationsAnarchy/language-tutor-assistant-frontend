@@ -47,6 +47,16 @@ export const LANGUAGES: { value: Language; label: string; nativeLabel: string; f
   { value: 'japanese', label: 'Japanese', nativeLabel: '日本語', flag: '🇯🇵' },
 ]
 
+export interface LanguageMeta {
+  label: string
+  nativeLabel: string
+  flag: string
+}
+
+export const LANGUAGE_META: Record<Language, LanguageMeta> = Object.fromEntries(
+  LANGUAGES.map((l) => [l.value, { label: l.label, nativeLabel: l.nativeLabel, flag: l.flag }]),
+) as Record<Language, LanguageMeta>
+
 export const LEVELS: { value: Level; label: string; description: string }[] = [
   { value: 'beginner', label: 'Beginner', description: 'Basic vocabulary and phrases' },
   { value: 'intermediate', label: 'Intermediate', description: 'Conversational fluency' },

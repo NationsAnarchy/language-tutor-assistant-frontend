@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { getFlagSvgUrl } from '@/lib/twemoji'
 import { useTheme } from '@/lib/hooks/use-theme'
 import type { Language, Level, User } from '@/lib/types'
-import { LANGUAGES } from '@/lib/types'
+import { LANGUAGE_META } from '@/lib/types'
 
 interface TopBarProps {
   user: User
@@ -48,7 +48,7 @@ export const TopBar = memo(function TopBar({ user, language, level, onSwitchLang
   const menuRef = useRef<HTMLDivElement>(null)
   const { theme, toggle: toggleTheme } = useTheme()
 
-  const langMeta = LANGUAGES.find((l) => l.value === language)
+  const langMeta = LANGUAGE_META[language]
   const levelLabel = level.charAt(0).toUpperCase() + level.slice(1)
 
   // Close on outside click

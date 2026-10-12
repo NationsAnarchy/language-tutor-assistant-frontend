@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { BackendSession } from '@/lib/api'
 import { byMostRecent, mapBackendSession, mapChatHistory } from '@/lib/mappers'
-import type { Session } from '@/lib/types'
+import { LANGUAGE_META, type Session } from '@/lib/types'
 
 /** Build a backend session record with sensible defaults. */
 function backendSession(overrides: Partial<BackendSession> = {}): BackendSession {
@@ -101,5 +101,25 @@ describe('byMostRecent', () => {
       '2024-01-01T00:00:00Z',
       undefined,
     ])
+  })
+})
+
+describe('LANGUAGE_META dictionary', () => {
+  it('contains valid metadata for all supported languages', () => {
+    expect(LANGUAGE_META.korean).toEqual({
+      label: 'Korean',
+      nativeLabel: '한국어',
+      flag: '🇰🇷',
+    })
+    expect(LANGUAGE_META.japanese).toEqual({
+      label: 'Japanese',
+      nativeLabel: '日本語',
+      flag: '🇯🇵',
+    })
+    expect(LANGUAGE_META.english).toEqual({
+      label: 'English',
+      nativeLabel: 'English',
+      flag: '🇺🇸',
+    })
   })
 })

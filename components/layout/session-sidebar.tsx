@@ -3,7 +3,7 @@
 import { X, Plus, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getFlagSvgUrl } from '@/lib/twemoji'
-import type { Language, Session } from '@/lib/types'
+import { LANGUAGE_META, type Language, type Session } from '@/lib/types'
 import { SessionItem } from './session-item'
 
 interface SessionSidebarProps {
@@ -18,12 +18,6 @@ interface SessionSidebarProps {
   onRenameSession?: (sessionId: string, newTitle: string) => void
   onDeleteSession?: (sessionId: string, wasActive: boolean) => void
   disabled?: boolean
-}
-
-const LANGUAGE_META: Record<Language, { label: string; nativeLabel: string; flag: string }> = {
-  english: { label: 'English', nativeLabel: 'English', flag: '🇺🇸' },
-  korean: { label: 'Korean', nativeLabel: '한국어', flag: '🇰🇷' },
-  japanese: { label: 'Japanese', nativeLabel: '日本語', flag: '🇯🇵' },
 }
 
 export function SessionSidebar({
