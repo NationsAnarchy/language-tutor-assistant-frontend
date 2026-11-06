@@ -12,7 +12,7 @@
 
 /** Paths that return binary data rather than JSON. */
 const BINARY_PREFIXES = ['/audio/']
-const BINARY_POST_PATTERNS = [/^\/session\/[^/]+\/tts$/]
+const BINARY_POST_PATTERNS = [/^\/session\/[a-zA-Z0-9_-]+\/tts$/]
 
 /** Paths that return Server-Sent Events (`text/event-stream`). */
 const SSE_PATHS = ['/chat']
@@ -21,11 +21,11 @@ const SSE_PATHS = ['/chat']
 const ALLOWED_PATHS: RegExp[] = [
   /^\/sessions$/, // GET  — list the user's conversations
   /^\/session$/, // POST — create a conversation
-  /^\/session\/[^/]+$/, // GET / PATCH / DELETE — read, rename, delete
-  /^\/session\/[^/]+\/tts$/, // POST — synthesize speech
-  /^\/session\/[^/]+\/mistakes$/, // GET  — list session mistakes
+  /^\/session\/[a-zA-Z0-9_-]+$/, // GET / PATCH / DELETE — read, rename, delete
+  /^\/session\/[a-zA-Z0-9_-]+\/tts$/, // POST — synthesize speech
+  /^\/session\/[a-zA-Z0-9_-]+\/mistakes$/, // GET  — list session mistakes
   /^\/chat$/, // POST — streaming chat
-  /^\/audio\/[A-Za-z0-9._-]+$/, // GET  — cached MP3 replay
+  /^\/audio\/[a-zA-Z0-9_-]+\.mp3$/, // GET  — cached MP3 replay
 ]
 
 /**

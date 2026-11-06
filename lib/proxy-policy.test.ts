@@ -27,9 +27,13 @@ describe('isAllowedProxyPath', () => {
       '/',
       '/admin',
       '/users',
+      '/session/..',
+      '/session/../admin',
       '/session/abc/extra',
+      '/audio/..',
       '/audio/../../etc/passwd',
       '/audio/nested/file.mp3',
+      '/audio/deadbeef.wav',
       '/sessions/abc',
     ]) {
       expect(isAllowedProxyPath(path), path).toBe(false)
