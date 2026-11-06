@@ -15,6 +15,8 @@ const nextConfig = {
     unoptimized: true,
   },
 
+  output: 'standalone',
+
   async headers() {
     const contentSecurityPolicy = [
       "default-src 'self'",
