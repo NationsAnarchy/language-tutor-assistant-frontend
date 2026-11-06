@@ -2,6 +2,10 @@
 
 Next.js web application for the Trilingual Language Tutor Agent. Supports English, Korean, and Japanese with NextAuth OAuth login, chat + structured exercises, audio playback with seek/volume/speed controls, client-side session switching, multi-tab enforcement, and mistake tracking with targeted practice exercises.
 
+## Documentation
+
+- [SPEC.md](SPEC.md) — Comprehensive Full-Stack Architecture, Production Hardening Specifications, and Future Expansion Blueprint.
+
 ## Quick Start
 
 ```bash
