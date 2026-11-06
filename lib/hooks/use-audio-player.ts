@@ -26,7 +26,7 @@ export function failureMessage(reason: AudioFailureReason): string {
   }
 }
 
-function isRetryable(reason: AudioFailureReason): boolean {
+export function isRetryable(reason: AudioFailureReason): boolean {
   return reason === 'network' || reason === 'decode' || reason === 'aborted' || reason === 'unknown'
 }
 
