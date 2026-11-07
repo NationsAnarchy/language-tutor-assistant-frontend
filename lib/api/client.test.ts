@@ -36,4 +36,23 @@ describe('authenticatedRequest', () => {
     await authenticatedRequest('/two')
     expect(fetchMock.mock.calls[3][1].headers.Authorization).toBe('Bearer new')
   })
+  it('throws a typed ApiError on request timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ token: 'jwt' }), { status: 200 }))
+      fetchMock.mockImplementationOnce((_url, init) => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      }))
+      const reqPromise = authenticatedRequest('/slow')
+      const assertion = expect(reqPromise).rejects.toMatchObject({
+        status: 408,
+        code: 'timeout',
+        retryable: true,
+      })
+      await vi.advanceTimersByTimeAsync(65_000)
+      await assertion
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

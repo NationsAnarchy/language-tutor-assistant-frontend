@@ -25,10 +25,14 @@ export function useChatSessionLoader({ sessionId, router, refreshSessions, updat
     currentSessionIdRef.current = sessionId
     isChatActiveRef.current = isChatActive
   }, [isChatActive, sessionId])
-  const load = useCallback(async () => {
-    if (!sessionId) { router.replace('/language'); return }
+  const load = useCallback(async (fromBFCache = false) => {
+    const activeSessionId = fromBFCache
+      ? ((typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('session') : null) ?? sessionId)
+      : sessionId
+    if (!activeSessionId) { router.replace('/language'); return }
     if (switchingRef.current) return
-    const requestedSessionId = sessionId
+    const requestedSessionId = activeSessionId
+    currentSessionIdRef.current = requestedSessionId
     const isCurrent = () => currentSessionIdRef.current === requestedSessionId && !switchingRef.current
     try {
       // The sidebar is useful but must never prevent the active conversation
@@ -43,7 +47,7 @@ export function useChatSessionLoader({ sessionId, router, refreshSessions, updat
         })
         return
       }
-      const backendSession = await getSession(sessionId)
+      const backendSession = await getSession(requestedSessionId)
       if (isCurrent()) onSessionLoaded(hydrateChatSession(backendSession))
     } catch (error) {
       if (isCurrent() && error instanceof ApiError && error.status === 404) router.replace('/language')
@@ -57,7 +61,7 @@ export function useChatSessionLoader({ sessionId, router, refreshSessions, updat
       if (!event.persisted) return
       setLoading(true)
       clearTokenCache()
-      void updateSession().then(() => load())
+      void updateSession().then(() => load(true))
     }
     window.addEventListener('pageshow', onPageShow)
     return () => window.removeEventListener('pageshow', onPageShow)

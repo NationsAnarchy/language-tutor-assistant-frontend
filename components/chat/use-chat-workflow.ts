@@ -11,6 +11,11 @@ export function appendStreamToken(messages: Message[], messageId: string, token:
 export function sessionChangeState(initialMessages: Message[]) {
   return { messages: initialMessages, isLoading: false, messageErrors: new Map<string, MessageError>(), audioFailures: new Map<string, string>(), audioLoadingId: null as string | null }
 }
+export function areMessagesEqual(a: Message[], b: Message[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  return a.every((msg, idx) => msg.id === b[idx].id && msg.role === b[idx].role && msg.content === b[idx].content && msg.audioUrl === b[idx].audioUrl)
+}
 
 interface SubmitOptions {
   retryOfId?: string; beforeSubmit?: () => void; onError?: (message: string) => void; demoResponse?: string
@@ -27,21 +32,61 @@ export function useChatWorkflow({ sessionId, language, initialMessages, router }
   const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null)
   const requestRef = useRef<AbortController | null>(null)
   const audioRef = useRef<AbortController | null>(null)
-  const operationRef = useRef(0)
+  const chatOperationRef = useRef(0)
+  const audioOperationRef = useRef(0)
+  const hasSubmittedInSessionRef = useRef(false)
   const objectUrlsRef = useRef(new Set<string>())
-  useEffect(() => {
+  const currentSessionIdRef = useRef(sessionId)
+  const prevInitialMessagesRef = useRef(initialMessages)
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
+
+  const teardownOperations = useCallback(() => {
+    chatOperationRef.current += 1
+    audioOperationRef.current += 1
+    requestRef.current?.abort()
+    audioRef.current?.abort()
     const objectUrls = objectUrlsRef.current
-    operationRef.current += 1
-    requestRef.current?.abort(); audioRef.current?.abort()
-    objectUrls.forEach((url) => URL.revokeObjectURL(url)); objectUrls.clear()
-    const reset = sessionChangeState(initialMessages)
-    setMessages(reset.messages); setIsLoading(reset.isLoading); setMessageErrors(reset.messageErrors); setAudioFailures(reset.audioFailures); setAudioLoadingId(reset.audioLoadingId)
-    return () => { operationRef.current += 1; requestRef.current?.abort(); audioRef.current?.abort(); objectUrls.forEach((url) => URL.revokeObjectURL(url)); objectUrls.clear() }
-  }, [initialMessages, sessionId])
+    objectUrls.forEach((url) => URL.revokeObjectURL(url))
+    objectUrls.clear()
+  }, [])
+
+  useEffect(() => {
+    const isNewSession = currentSessionIdRef.current !== sessionId
+    const isNewInitialMessages = !areMessagesEqual(prevInitialMessagesRef.current, initialMessages)
+    prevInitialMessagesRef.current = initialMessages
+
+    if (isNewSession) {
+      currentSessionIdRef.current = sessionId
+      hasSubmittedInSessionRef.current = false
+      teardownOperations()
+      const reset = sessionChangeState(initialMessages)
+      setMessages(reset.messages)
+      setIsLoading(reset.isLoading)
+      setMessageErrors(reset.messageErrors)
+      setAudioFailures(reset.audioFailures)
+      setAudioLoadingId(reset.audioLoadingId)
+      return
+    }
+
+    // Same session background hydration: update messages if initialMessages changed and no chat operations sent yet in this session
+    if (isNewInitialMessages && !hasSubmittedInSessionRef.current) {
+      setMessages((prev) => {
+        const localAudioMap = new Map(prev.filter((m) => m.audioUrl).map((m) => [m.id, m.audioUrl]))
+        return initialMessages.map((msg) => {
+          const localAudio = localAudioMap.get(msg.id)
+          return localAudio && !msg.audioUrl ? { ...msg, audioUrl: localAudio } : msg
+        })
+      })
+    }
+  }, [initialMessages, sessionId, teardownOperations])
+
+  useEffect(() => () => teardownOperations(), [teardownOperations])
 
   const submit = useCallback(async (content: string, options: SubmitOptions = {}) => {
     if (!content.trim()) return false
-    const operation = ++operationRef.current
+    hasSubmittedInSessionRef.current = true
+    const operation = ++chatOperationRef.current
     const userMessage: Message = { id: options.retryOfId || Date.now().toString(), role: 'user', content, timestamp: new Date() }
     if (options.retryOfId) {
       setMessageErrors((previous) => { const next = new Map(previous); next.delete(options.retryOfId!); return next })
@@ -49,42 +94,61 @@ export function useChatWorkflow({ sessionId, language, initialMessages, router }
     } else setMessages((previous) => [...previous, userMessage])
     options.beforeSubmit?.()
     setIsLoading(true)
+    let agentId: string | null = null
     try {
       if (!sessionId || sessionId === 'demo-session') {
         await new Promise((resolve) => setTimeout(resolve, 1800))
-        if (operationRef.current !== operation) return false
+        if (chatOperationRef.current !== operation) return false
         const reply = options.demoResponse || demoFallback(language)
         setMessages((previous) => [...previous, { id: (Date.now() + 1).toString(), role: 'agent', content: reply, timestamp: new Date() }])
         options.onComplete?.(reply)
       } else {
         requestRef.current?.abort()
-        const controller = new AbortController(); requestRef.current = controller
-        const agentId = (Date.now() + 1).toString()
-        setMessages((previous) => [...previous, { id: agentId, role: 'agent', content: '', timestamp: new Date() }])
+        const controller = new AbortController()
+        requestRef.current = controller
+        agentId = (Date.now() + 1).toString()
+        setMessages((previous) => [...previous, { id: agentId!, role: 'agent', content: '', timestamp: new Date() }])
         const result = await sendChatStream(sessionId, content, (event) => {
-          if (operationRef.current === operation && event.type === 'token' && event.content) setMessages((previous) => appendStreamToken(previous, agentId, event.content!))
+          if (chatOperationRef.current === operation && event.type === 'token' && event.content) setMessages((previous) => appendStreamToken(previous, agentId!, event.content!))
         }, controller.signal, { practiceType: options.practiceType })
-        if (operationRef.current !== operation) return false
+        if (chatOperationRef.current !== operation) return false
         invalidateSessionCache(sessionId)
         options.onComplete?.(result.reply)
-        const audioController = new AbortController(); audioRef.current = audioController; setAudioLoadingId(agentId)
-        void synthesizeAudio(sessionId, result.reply, audioController.signal).then((url) => {
-          if (audioController.signal.aborted || operationRef.current !== operation) return
-          setAudioLoadingId((current) => current === agentId ? null : current)
-          if (url) {
-            objectUrlsRef.current.add(url)
-            setMessages((previous) => previous.map((message) => message.id === agentId ? { ...message, audioUrl: url } : message))
-            options.onAudio?.(url)
-          }
-        }).catch((error) => {
-          if (audioController.signal.aborted || operationRef.current !== operation) return
-          setAudioLoadingId((current) => current === agentId ? null : current)
-          setAudioFailures((previous) => new Map(previous).set(agentId, error instanceof ApiError ? "Audio couldn't be generated right now." : 'Audio unavailable.'))
-        })
+        if (!result.reply || result.reply.trim().length === 0) {
+          setMessages((previous) => previous.filter((message) => message.id !== agentId))
+          setMessageErrors((previous) => new Map(previous).set(userMessage.id, { message: 'The tutor gave an empty response. Please try again.', retryable: true, originalContent: content }))
+        } else {
+          setMessages((previous) => previous.map((message) => message.id === agentId ? { ...message, content: message.content || result.reply } : message))
+          audioRef.current?.abort()
+          const audioOp = ++audioOperationRef.current
+          const audioController = new AbortController()
+          audioRef.current = audioController
+          setAudioLoadingId(agentId)
+          void Promise.resolve(synthesizeAudio(sessionId, result.reply, audioController.signal)).then((url) => {
+            const isStale = audioController.signal.aborted || audioOperationRef.current !== audioOp
+            if (isStale) {
+              if (url) URL.revokeObjectURL(url)
+              return
+            }
+            setAudioLoadingId((current) => current === agentId ? null : current)
+            if (url) {
+              objectUrlsRef.current.add(url)
+              setMessages((previous) => previous.map((message) => message.id === agentId ? { ...message, audioUrl: url } : message))
+              options.onAudio?.(url)
+            }
+          }).catch((error) => {
+            if (audioController.signal.aborted || audioOperationRef.current !== audioOp) return
+            setAudioLoadingId((current) => current === agentId ? null : current)
+            setAudioFailures((previous) => new Map(previous).set(agentId!, error instanceof ApiError ? "Audio couldn't be generated right now." : 'Audio unavailable.'))
+          })
+        }
       }
       return true
     } catch (error) {
-      if (operationRef.current !== operation) return false
+      if (agentId) {
+        setMessages((previous) => previous.filter((message) => message.id !== agentId))
+      }
+      if (chatOperationRef.current !== operation) return false
       if (isAbortError(error)) return false
       if (options.onError) options.onError(error instanceof ApiError ? error.message : 'Something went wrong. Please try again.')
       else {
@@ -92,7 +156,7 @@ export function useChatWorkflow({ sessionId, language, initialMessages, router }
         setMessageErrors((previous) => new Map(previous).set(userMessage.id, { message, retryable, originalContent: content }))
       }
       return false
-    } finally { if (operationRef.current === operation) setIsLoading(false) }
+    } finally { if (chatOperationRef.current === operation) setIsLoading(false) }
   }, [language, router, sessionId])
   const requestPractice = useCallback((type: PracticeType, options: Omit<SubmitOptions, 'practiceType'> = {}) => {
     const prompts: Record<Language, Record<PracticeType, string>> = {
@@ -104,30 +168,34 @@ export function useChatWorkflow({ sessionId, language, initialMessages, router }
   }, [language, submit])
   const retryAudio = useCallback(async (messageId: string) => {
     if (!sessionId || sessionId === 'demo-session') return false
-    const message = messages.find((candidate) => candidate.id === messageId && candidate.role === 'agent')
+    const message = messagesRef.current.find((candidate) => candidate.id === messageId && candidate.role === 'agent')
     if (!message?.content) return false
 
-    const operation = operationRef.current
+    audioRef.current?.abort()
+    const audioOp = ++audioOperationRef.current
     const controller = new AbortController()
     audioRef.current = controller
     setAudioFailures((previous) => { const next = new Map(previous); next.delete(messageId); return next })
     setAudioLoadingId(messageId)
     try {
       const url = await synthesizeAudio(sessionId, message.content, controller.signal)
-      if (controller.signal.aborted || operationRef.current !== operation) return false
+      if (controller.signal.aborted || audioOperationRef.current !== audioOp) {
+        if (url) URL.revokeObjectURL(url)
+        return false
+      }
       if (url) {
         objectUrlsRef.current.add(url)
         setMessages((previous) => previous.map((candidate) => candidate.id === messageId ? { ...candidate, audioUrl: url } : candidate))
       }
       return Boolean(url)
     } catch (error) {
-      if (controller.signal.aborted || operationRef.current !== operation) return false
+      if (controller.signal.aborted || audioOperationRef.current !== audioOp) return false
       setAudioFailures((previous) => new Map(previous).set(messageId, error instanceof ApiError ? "Audio couldn't be generated right now." : 'Audio unavailable.'))
       return false
     } finally {
-      if (operationRef.current === operation) setAudioLoadingId((current) => current === messageId ? null : current)
+      if (audioOperationRef.current === audioOp) setAudioLoadingId((current) => current === messageId ? null : current)
     }
-  }, [messages, sessionId])
+  }, [sessionId])
   const dismissError = useCallback((messageId: string) => setMessageErrors((previous) => { const next = new Map(previous); next.delete(messageId); return next }), [])
   return { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, requestPractice, retryAudio, dismissError }
 }

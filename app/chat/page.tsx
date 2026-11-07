@@ -65,17 +65,23 @@ function ChatPageInner() {
     if (!deleted) return;
 
     if (wasActive) {
+      // Stop any playing audio before switching away from deleted conversation (Issue #42)
+      audioManager.stopAll();
       // Navigate to the most recent remaining session
       const sorted = remaining
-        .filter(s => s.session_id)
+        .filter((s): s is typeof s & { session_id: string } => Boolean(s.session_id))
         .sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
       if (sorted.length > 0 && sorted[0].session_id) {
-        router.push(`/chat?session=${sorted[0].session_id}`);
+        try {
+          await switchToSession(sorted[0].session_id, false);
+        } catch {
+          router.push("/language");
+        }
       } else {
         router.push("/language");
       }
     }
-  }, [removeSession, router]);
+  }, [removeSession, router, switchToSession]);
 
   const handleSelectSession = (selectedSessionId: string) => {
     if (selectedSessionId === sessionId || switchingRef.current) return;

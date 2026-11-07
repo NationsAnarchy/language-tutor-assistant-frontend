@@ -144,7 +144,44 @@ describe('useChatWorkflow session changes', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:unmount')
   })
 
-  it('attaches a retryable inline error when streaming fails', async () => {
+  it('does not revoke audio URLs when initialMessages updates for the same sessionId', async () => {
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+    vi.mocked(api.sendChatStream).mockResolvedValue({ reply: 'Tutor reply', intent: 'chat' })
+    vi.mocked(api.synthesizeAudio).mockResolvedValue('blob:keep-playing')
+
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    await act(async () => {
+      await workflow.submit('Hi')
+      await Promise.resolve()
+    })
+    // Background refresh provides a new initialMessages array for the same session
+    const refreshedMessages: Message[] = [{ id: 'refreshed-1', role: 'user', content: 'Hi', timestamp: new Date() }]
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={refreshedMessages} onWorkflow={captureWorkflow} />) })
+
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+  })
+
+  it('skips audio synthesis when the stream reply is empty', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+    vi.mocked(api.sendChatStream).mockResolvedValue({ reply: '', intent: 'chat' })
+
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    await act(async () => {
+      await workflow.submit('Hi')
+      await Promise.resolve()
+    })
+
+    expect(api.synthesizeAudio).not.toHaveBeenCalled()
+  })
+
+  it('attaches a retryable inline error and removes empty agent placeholder when streaming fails', async () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -158,6 +195,149 @@ describe('useChatWorkflow session changes', () => {
     const userMessage = workflow.messages.find((message) => message.role === 'user')!
     expect(workflow.isLoading).toBe(false)
     expect(workflow.messageErrors.get(userMessage.id)).toMatchObject({ message: 'Try again', retryable: true, originalContent: 'Hi' })
+    expect(workflow.messages.filter((message) => message.role === 'agent')).toHaveLength(0)
+  })
+
+  it('removes agent placeholder when streaming is aborted by caller', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    let submitPromise!: Promise<boolean>
+    await act(async () => { submitPromise = workflow.submit('Hi') })
+    expect(workflow.messages.some((m) => m.role === 'agent')).toBe(true)
+
+    await act(async () => {
+      rejectStream?.(new DOMException('aborted', 'AbortError'))
+      await submitPromise
+    })
+
+    expect(workflow.messages.some((m) => m.role === 'agent')).toBe(false)
+  })
+
+  it('retains newly submitted messages after streaming finishes and loading transitions to false', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+    vi.mocked(api.sendChatStream).mockResolvedValue({ reply: 'Assistant reply', intent: 'chat' })
+    vi.mocked(api.synthesizeAudio).mockResolvedValue(null)
+
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    await act(async () => {
+      await workflow.submit('Hello there')
+      await Promise.resolve()
+    })
+
+    expect(workflow.isLoading).toBe(false)
+    expect(workflow.messages).toHaveLength(2)
+    expect(workflow.messages[0].content).toBe('Hello there')
+    expect(workflow.messages[1].content).toBe('Assistant reply')
+  })
+
+  it('removes superseded empty agent placeholder when a second message is submitted', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    let firstSubmit!: Promise<boolean>
+    await act(async () => { firstSubmit = workflow.submit('First') })
+    expect(workflow.messages.some((m) => m.role === 'agent')).toBe(true)
+
+    // Superseding submission
+    vi.mocked(api.sendChatStream).mockResolvedValue({ reply: 'Second reply', intent: 'chat' })
+    vi.mocked(api.synthesizeAudio).mockResolvedValue(null)
+    await act(async () => {
+      rejectStream?.(new DOMException('aborted', 'AbortError'))
+      await firstSubmit
+      await workflow.submit('Second')
+      await Promise.resolve()
+    })
+
+    // There should only be one agent message (from the second submission), not an orphaned empty one from the first
+    const agentMessages = workflow.messages.filter((m) => m.role === 'agent')
+    expect(agentMessages).toHaveLength(1)
+    expect(agentMessages[0].content).toBe('Second reply')
+  })
+
+  it('allows background hydration in a new session after switching sessions', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+    vi.mocked(api.sendChatStream).mockResolvedValue({ reply: 'Reply 1', intent: 'chat' })
+    vi.mocked(api.synthesizeAudio).mockResolvedValue(null)
+
+    // Chat in session 1
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    await act(async () => {
+      await workflow.submit('Hi')
+      await Promise.resolve()
+    })
+
+    // Switch to session 2 with empty messages
+    await act(async () => { root.render(<Harness sessionId="session-2" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    expect(workflow.messages).toEqual([])
+
+    // Background hydration arrives for session 2
+    const hydrated: Message[] = [{ id: 'msg-s2', role: 'agent', content: 'Welcome to session 2', timestamp: new Date() }]
+    await act(async () => { root.render(<Harness sessionId="session-2" initialMessages={hydrated} onWorkflow={captureWorkflow} />) })
+    expect(workflow.messages).toEqual(hydrated)
+  })
+
+  it('does not duplicate or overwrite messages when background hydration completes after early chat submission', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+    vi.mocked(api.sendChatStream).mockResolvedValue({ reply: 'Fast reply', intent: 'chat' })
+    vi.mocked(api.synthesizeAudio).mockResolvedValue(null)
+
+    // Render with empty initialMessages, then user sends early message before hydration finishes
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    await act(async () => {
+      await workflow.submit('Early message')
+      await Promise.resolve()
+    })
+    expect(workflow.messages).toHaveLength(2)
+
+    // Background hydration arrives late with 2 historical messages
+    const history: Message[] = [
+      { id: 'hist-1', role: 'user', content: 'Old question', timestamp: new Date() },
+      { id: 'hist-2', role: 'agent', content: 'Old answer', timestamp: new Date() },
+    ]
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={history} onWorkflow={captureWorkflow} />) })
+
+    // Active session messages should be protected and not duplicated
+    expect(workflow.messages).toHaveLength(2)
+    expect(workflow.messages[0].content).toBe('Early message')
+    expect(workflow.messages[1].content).toBe('Fast reply')
+  })
+
+  it('preserves retryAudio memoized callback identity during streaming token emissions', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    const initialRetryAudio = workflow.retryAudio
+
+    let submitPromise!: Promise<boolean>
+    await act(async () => { submitPromise = workflow.submit('Testing') })
+    await act(async () => {
+      emitToken?.({ type: 'token', content: 'Chunk 1' })
+      emitToken?.({ type: 'token', content: 'Chunk 2' })
+      rejectStream?.(new DOMException('aborted', 'AbortError'))
+      await submitPromise
+    })
+
+    // retryAudio function reference must remain identical across streaming token emissions
+    expect(workflow.retryAudio).toBe(initialRetryAudio)
   })
 
   it('keeps chat completion available when audio synthesis fails', async () => {
@@ -176,7 +356,7 @@ describe('useChatWorkflow session changes', () => {
 
     const agentMessage = workflow.messages.find((message) => message.role === 'agent')!
     expect(workflow.isLoading).toBe(false)
-    expect(agentMessage.content).toBe('')
+    expect(agentMessage.content).toBe('Tutor reply')
     expect(workflow.audioFailures.get(agentMessage.id)).toBe('Audio unavailable.')
   })
 

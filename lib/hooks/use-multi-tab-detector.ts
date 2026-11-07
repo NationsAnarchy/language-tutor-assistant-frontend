@@ -34,8 +34,8 @@ export function useMultiTabDetector() {
 
   /** Re-evaluate how many tabs are active and update state. */
   const evaluate = useCallback(() => {
-    // Count tabs excluding self
-    const others = activeTabsRef.current.size - (activeTabsRef.current.has(tabId) ? 1 : 0)
+    // Count tabs (activeTabsRef only stores other tabs)
+    const others = activeTabsRef.current.size
 
     if (others >= 1) {
       // Once the user has claimed this tab, do not re-block it just because
@@ -47,7 +47,7 @@ export function useMultiTabDetector() {
       electedRef.current = false
       setTabState('single')
     }
-  }, [tabId])
+  }, [])
 
   /** Elect this tab as the active one. */
   const electThisTab = useCallback(() => {
@@ -62,13 +62,14 @@ export function useMultiTabDetector() {
     const channel = new BroadcastChannel(CHANNEL_NAME)
     channelRef.current = channel
 
-    // Same Map instance for the lifetime of the effect.
+    // Same instances for the lifetime of the effect.
     const timeouts = timeoutMapRef.current
+    const activeTabs = activeTabsRef.current
 
     // Register a tab ID (from heartbeat or initial message)
     const registerTab = (id: string) => {
       if (id === tabId) return
-      activeTabsRef.current.add(id)
+      activeTabs.add(id)
       evaluate()
 
       // Clear any existing timeout for this tab and set a new one
@@ -77,7 +78,7 @@ export function useMultiTabDetector() {
       timeouts.set(
         id,
         setTimeout(() => {
-          activeTabsRef.current.delete(id)
+          activeTabs.delete(id)
           timeouts.delete(id)
           evaluate()
         }, TAB_TIMEOUT),
@@ -92,6 +93,7 @@ export function useMultiTabDetector() {
       }
 
       if (data?.type === 'elected' && data.from !== tabId) {
+        electedRef.current = false
         setTabState('multiple')
       }
     }
@@ -110,6 +112,7 @@ export function useMultiTabDetector() {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current)
       for (const t of timeouts.values()) clearTimeout(t)
       timeouts.clear()
+      activeTabs.clear()
       channel.close()
       channelRef.current = null
     }

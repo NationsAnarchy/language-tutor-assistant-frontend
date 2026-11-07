@@ -50,6 +50,6 @@ export async function listSessions(): Promise<BackendSession[]> {
 export async function refreshSessionInBackground(sessionId: string): Promise<SessionWithHistory | null> {
   try { const data = await (await authenticatedRequest(`/session/${sessionId}`)).json() as SessionWithHistory; sessionCache.set(sessionId, { data, ts: Date.now() }); return data } catch { return null }
 }
-export async function renameSession(sessionId: string, title: string): Promise<boolean> { try { await authenticatedRequest(`/session/${sessionId}`, { method: 'PATCH', body: JSON.stringify({ title }) }); invalidateSessionCache(sessionId); return true } catch { return false } }
-export async function deleteSession(sessionId: string): Promise<boolean> { try { await authenticatedRequest(`/session/${sessionId}`, { method: 'DELETE' }); invalidateSessionCache(sessionId); return true } catch { return false } }
+export async function renameSession(sessionId: string, title: string): Promise<boolean> { try { const res = await authenticatedRequest(`/session/${sessionId}`, { method: 'PATCH', body: JSON.stringify({ title }) }); await res.text().catch(() => ''); invalidateSessionCache(sessionId); return true } catch { return false } }
+export async function deleteSession(sessionId: string): Promise<boolean> { try { const res = await authenticatedRequest(`/session/${sessionId}`, { method: 'DELETE' }); await res.text().catch(() => ''); invalidateSessionCache(sessionId); return true } catch { return false } }
 export async function getMistakes(sessionId: string): Promise<MistakeEntry[]> { return (await authenticatedRequest(`/session/${sessionId}/mistakes`)).json() }
