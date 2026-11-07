@@ -69,6 +69,7 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
   const [muted, setMuted] = useState(false)
   const [showControls, setShowControls] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioAbortControllerRef = useRef<AbortController | null>(null)
   const userPauseRef = useRef(false)
   const currentTimeRef = useRef(0)
 
@@ -77,11 +78,8 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
     if (audio) {
       userPauseRef.current = true
       audioManager.unregister(audio)
-      audio.onpause = null
-      audio.ontimeupdate = null
-      audio.onloadedmetadata = null
-      audio.onended = null
-      audio.onerror = null
+      audioAbortControllerRef.current?.abort()
+      audioAbortControllerRef.current = null
       audio.pause()
       audio.removeAttribute('src')
       audio.load()
@@ -104,7 +102,7 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
     cleanupElement()
   }, [cleanupElement])
 
-  const attachExternalHandlers = useCallback((audio: HTMLAudioElement) => {
+  const attachExternalHandlers = useCallback((audio: HTMLAudioElement, signal?: AbortSignal) => {
     audio.addEventListener('pause', () => {
       if (!userPauseRef.current) {
         setAudioState('idle')
@@ -112,7 +110,7 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
         setCurrentTime(0)
       }
       userPauseRef.current = false
-    })
+    }, { signal })
   }, [])
 
   const handlePlay = useCallback(async () => {
@@ -159,29 +157,33 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
         audio.muted = muted
         audioRef.current = audio
 
+        const controller = new AbortController()
+        audioAbortControllerRef.current = controller
+        const { signal } = controller
+
         audio.addEventListener('timeupdate', () => {
           currentTimeRef.current = audio.currentTime
           setCurrentTime(audio.currentTime)
-        })
+        }, { signal })
         audio.addEventListener('loadedmetadata', () => {
           setDuration(audio.duration)
           setShowControls(true)
           if (currentTimeRef.current > 0) {
             audio.currentTime = currentTimeRef.current
           }
-        })
+        }, { signal })
         audio.addEventListener('ended', () => {
           setAudioState('idle')
           currentTimeRef.current = 0
           setCurrentTime(0)
-        })
+        }, { signal })
         audio.addEventListener('error', () => {
           setFailure(classifyMediaError(audio.error?.code))
           setAudioState('idle')
-        })
+        }, { signal })
 
         audioManager.register(audio)
-        attachExternalHandlers(audio)
+        attachExternalHandlers(audio, signal)
       }
 
       audioRef.current.playbackRate = speed === 'slow' ? 0.75 : 1.0

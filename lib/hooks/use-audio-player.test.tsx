@@ -79,4 +79,44 @@ describe('AudioPlayButton object URL lifecycle', () => {
     })
     expect(player.currentTime).toBe(15)
   })
+
+  it('detaches event listeners on audio release / unmount', async () => {
+    let player!: ReturnType<typeof useAudioPlayer>
+    function Harness({ url }: { url: string }) {
+      const p = useAudioPlayer(url)
+      useEffect(() => { player = p }, [p])
+      return null
+    }
+
+    act(() => {
+      root.render(<Harness url="blob:audio-detach" />)
+    })
+
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    await act(async () => {
+      await player.handlePlay()
+    })
+
+    const audio = player.audioRef.current
+    expect(audio).toBeTruthy()
+
+    // Trigger loadedmetadata before release
+    act(() => {
+      audio?.dispatchEvent(new Event('loadedmetadata'))
+    })
+    expect(player.showControls).toBe(true)
+
+    // Now release audio via resetAudio
+    act(() => {
+      player.resetAudio()
+    })
+
+    // Now dispatching events on the released audio should have no effect
+    act(() => {
+      audio?.dispatchEvent(new Event('timeupdate'))
+    })
+    expect(player.currentTime).toBe(0)
+
+    playSpy.mockRestore()
+  })
 })

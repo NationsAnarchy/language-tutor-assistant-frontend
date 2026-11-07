@@ -15,7 +15,7 @@ Language learners struggle to bridge the gap between passive grammar study and a
 1. **Adaptive Pedagogical Agent Graphs**: Multi-node LangGraph agent enforcing level-appropriate grammar, silent tool usage, and CEFR boundary guardrails.
 2. **Context-Aware Retrieval (RAG)**: Pinecone vector search over native grammar rules and curated vocabulary sets.
 3. **Continuous Mistake Memory**: Persistent tracking of student weaknesses across sessions with targeted review exercises.
-4. **Sub-500ms Real-Time Token Streaming**: Low-latency typing UX using LangGraph v2 streaming over Server-Sent Events (SSE).
+4. **Streaming Typing UX**: Full reply generated, then streamed with a typing effect using Server-Sent Events (SSE).
 5. **Secure Audio Synthesis**: Gemini 3.8 Flash TTS with bounded LRU disk caching and authenticated browser proxying.
 
 ---
