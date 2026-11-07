@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { RefreshCcw, Send, BookOpen, Loader2, AlertCircle, CheckCircle2, CircleX, X } from 'lucide-react'
+import { RefreshCcw, Send, BookOpen, Loader2, AlertCircle, CheckCircle2, CircleX, X, Lightbulb } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ interface ExercisePanelProps {
   language: Language
   onSubmitAnswer: (answer: string) => void
   onRequestNew: () => void
+  onRequestHint?: () => void
   practiceType: PracticeType
   onPracticeTypeChange: (type: PracticeType) => void
   isLoading: boolean
@@ -39,6 +40,7 @@ export function ExercisePanel({
   language,
   onSubmitAnswer,
   onRequestNew,
+  onRequestHint,
   practiceType,
   onPracticeTypeChange,
   isLoading,
@@ -118,6 +120,18 @@ export function ExercisePanel({
             )}
           </div>
           <div className="flex items-center gap-1.5">
+            {onRequestHint && (
+              <button
+                type="button"
+                onClick={onRequestHint}
+                disabled={isLoading || !currentExercise || !!currentExercise.feedback}
+                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md px-2 py-1 hover:bg-accent"
+                aria-label="Request a hint"
+              >
+                <Lightbulb className="size-3.5" aria-hidden="true" />
+                Hint
+              </button>
+            )}
             <button
               type="button"
               onClick={onRequestNew}

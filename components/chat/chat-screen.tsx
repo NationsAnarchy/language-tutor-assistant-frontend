@@ -63,7 +63,7 @@ export function ChatScreen({
   const [showMistakes, setShowMistakes] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, requestPractice, retryAudio, dismissError } = useChatWorkflow({ sessionId, language, initialMessages, router });
+  const { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, requestPractice, requestHint, retryAudio, dismissError } = useChatWorkflow({ sessionId, language, initialMessages, router });
 
   // Load initial messages when session changes (e.g., resuming after sign-out)
   // Always set — empty array is valid for a new session (fixes Issue #10).
@@ -180,6 +180,13 @@ export function ChatScreen({
     setIsExerciseDrawerOpen(true);
     void handleRequestNewExercise("mistake_review");
   }, [handleRequestNewExercise]);
+
+  const handleRequestHint = useCallback(async () => {
+    if (isLoading || isExerciseLoading || !currentExercise) return;
+    await requestHint({
+      onError: setExerciseError,
+    });
+  }, [currentExercise, isExerciseLoading, isLoading, requestHint]);
 
   const isEmpty = messages.length === 0;
 
@@ -332,6 +339,7 @@ export function ChatScreen({
         language={language}
         onSubmitAnswer={handleExerciseSubmit}
         onRequestNew={handleRequestNewExercise}
+        onRequestHint={handleRequestHint}
         practiceType={practiceType}
         onPracticeTypeChange={setPracticeType}
         isLoading={isLoading || isExerciseLoading}

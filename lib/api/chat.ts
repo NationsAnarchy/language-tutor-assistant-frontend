@@ -6,10 +6,12 @@ import { ApiError } from './errors'
 
 export type PracticeType = 'grammar' | 'vocabulary' | 'reading' | 'writing' | 'translation' | 'mistake_review'
 export interface ChatStreamEvent { type: 'token' | 'done' | 'error'; content?: string; intent?: string; message?: string; practice_type?: PracticeType | null }
-export interface ChatStreamOptions { practiceType?: PracticeType; signal?: AbortSignal }
+export interface ChatStreamOptions { practiceType?: PracticeType; hintRequest?: boolean; signal?: AbortSignal }
 export async function sendChatStream(sessionId: string, message: string, onEvent: (event: ChatStreamEvent) => void, signal?: AbortSignal, options: Omit<ChatStreamOptions, 'signal'> = {}): Promise<{ reply: string; intent: string }> {
-  const { practiceType } = options
-  const body = practiceType ? { session_id: sessionId, message, practice_type: practiceType } : { session_id: sessionId, message }
+  const { practiceType, hintRequest } = options
+  const body: Record<string, unknown> = { session_id: sessionId, message }
+  if (practiceType) body.practice_type = practiceType
+  if (hintRequest) body.hint_request = true
   const response = await authenticatedRequest('/chat', { method: 'POST', body: JSON.stringify(body), signal })
   const reader = response.body?.getReader(); if (!reader) throw new ApiError(0, 'Streaming not supported by the browser.')
   const decoder = new TextDecoder(); let reply = ''; let intent = 'chat'; let buffer = ''

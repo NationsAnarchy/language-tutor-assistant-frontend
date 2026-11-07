@@ -18,9 +18,17 @@ const nextConfig = {
   output: process.env.BUILD_STANDALONE === 'true' ? 'standalone' : undefined,
 
   async headers() {
+    const isDev = process.env.NODE_ENV === 'development'
+    const scriptSrc = [
+      "'self'",
+      ...(isDev ? ["'unsafe-eval'"] : []),
+      "'unsafe-inline'",
+      "https://va.vercel-scripts.com",
+    ].join(' ')
+
     const contentSecurityPolicy = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://va.vercel-scripts.com",
+      `script-src ${scriptSrc}`,
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https://cdn.jsdelivr.net https://lh3.googleusercontent.com https://avatars.githubusercontent.com",

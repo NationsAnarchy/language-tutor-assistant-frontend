@@ -404,4 +404,28 @@ describe('useChatWorkflow session changes', () => {
     expect(api.synthesizeAudio).toHaveBeenCalledTimes(1)
     expect(onAudio).toHaveBeenCalledWith('blob:practice')
   })
+
+  it('sends a hint request with hintRequest: true through the shared stream', async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+    const captureWorkflow = (value: ReturnType<typeof useChatWorkflow>) => { workflow = value }
+    vi.mocked(api.sendChatStream).mockResolvedValue({ reply: 'Here is a hint for you', intent: 'chat' })
+    vi.mocked(api.synthesizeAudio).mockResolvedValue(null)
+
+    await act(async () => { root.render(<Harness sessionId="session-1" initialMessages={[]} onWorkflow={captureWorkflow} />) })
+    await act(async () => {
+      await workflow.requestHint()
+      await Promise.resolve()
+    })
+
+    expect(api.sendChatStream).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('hint'),
+      expect.any(Function),
+      expect.any(AbortSignal),
+      { practiceType: undefined, hintRequest: true },
+    )
+    expect(workflow.messages[1].content).toBe('Here is a hint for you')
+  })
 })

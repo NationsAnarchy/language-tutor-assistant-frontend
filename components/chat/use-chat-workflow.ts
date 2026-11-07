@@ -19,7 +19,7 @@ export function areMessagesEqual(a: Message[], b: Message[]): boolean {
 
 interface SubmitOptions {
   retryOfId?: string; beforeSubmit?: () => void; onError?: (message: string) => void; demoResponse?: string
-  practiceType?: PracticeType; onComplete?: (reply: string) => void; onAudio?: (url: string) => void
+  practiceType?: PracticeType; hintRequest?: boolean; onComplete?: (reply: string) => void; onAudio?: (url: string) => void
 }
 interface Options { sessionId: string | null; language: Language; initialMessages: Message[]; router: { replace: (path: string) => void } }
 
@@ -110,7 +110,7 @@ export function useChatWorkflow({ sessionId, language, initialMessages, router }
         setMessages((previous) => [...previous, { id: agentId!, role: 'agent', content: '', timestamp: new Date() }])
         const result = await sendChatStream(sessionId, content, (event) => {
           if (chatOperationRef.current === operation && event.type === 'token' && event.content) setMessages((previous) => appendStreamToken(previous, agentId!, event.content!))
-        }, controller.signal, { practiceType: options.practiceType })
+        }, controller.signal, { practiceType: options.practiceType, hintRequest: options.hintRequest })
         if (chatOperationRef.current !== operation) return false
         invalidateSessionCache(sessionId)
         options.onComplete?.(result.reply)
@@ -166,6 +166,14 @@ export function useChatWorkflow({ sessionId, language, initialMessages, router }
     }
     return submit(prompts[language][type], { ...options, practiceType: type })
   }, [language, submit])
+  const requestHint = useCallback((options: Omit<SubmitOptions, 'practiceType' | 'hintRequest'> = {}) => {
+    const hintPrompts: Record<Language, string> = {
+      english: 'Could you give me a hint for this question?',
+      korean: '이 문제에 대한 힌트를 주세요.',
+      japanese: 'この問題のヒントをください。',
+    }
+    return submit(hintPrompts[language], { ...options, hintRequest: true })
+  }, [language, submit])
   const retryAudio = useCallback(async (messageId: string) => {
     if (!sessionId || sessionId === 'demo-session') return false
     const message = messagesRef.current.find((candidate) => candidate.id === messageId && candidate.role === 'agent')
@@ -197,5 +205,5 @@ export function useChatWorkflow({ sessionId, language, initialMessages, router }
     }
   }, [sessionId])
   const dismissError = useCallback((messageId: string) => setMessageErrors((previous) => { const next = new Map(previous); next.delete(messageId); return next }), [])
-  return { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, requestPractice, retryAudio, dismissError }
+  return { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, requestPractice, requestHint, retryAudio, dismissError }
 }
