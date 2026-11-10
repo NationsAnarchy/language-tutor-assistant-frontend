@@ -3,6 +3,7 @@
 @import 'shadcn/tailwind.css';
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant group-hover (.group:hover &);
 
 /* Noto Sans supports Latin, Hangul, and CJK glyphs */
 

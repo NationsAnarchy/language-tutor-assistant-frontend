@@ -41,27 +41,47 @@ export function SessionItem({
 
   if (confirmDelete) {
     return (
-      <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-destructive/5 text-xs">
-        <span className="flex-1 text-destructive">Delete?</span>
-        <button type="button" onClick={handleDelete} className="px-1.5 py-0.5 rounded text-destructive hover:bg-destructive/10">Yes</button>
-        <button type="button" onClick={() => setConfirmDelete(false)} className="px-1.5 py-0.5 rounded text-muted-foreground hover:bg-accent">No</button>
+      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 text-xs text-destructive">
+        <span className="flex-1 font-medium truncate">Delete?</span>
+        <button
+          type="button"
+          onClick={handleDelete}
+          className="px-1.5 py-0.5 rounded font-medium text-destructive hover:bg-destructive/15 transition-colors"
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirmDelete(false)}
+          className="px-1.5 py-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          No
+        </button>
       </div>
     )
   }
 
   if (editing) {
     return (
-      <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg">
-        <MessageCircle className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/40 border border-primary/30">
+        <MessageCircle className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
         <input
           value={editTitle}
           onChange={(e) => setEditTitle(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditing(false) }}
-          className="flex-1 min-w-0 bg-transparent border-b border-primary text-xs outline-none"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleRename()
+            if (e.key === 'Escape') setEditing(false)
+          }}
+          className="flex-1 min-w-0 bg-transparent border-b border-primary text-xs outline-none text-foreground"
           autoFocus
         />
-        <button type="button" onClick={handleRename} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground">
-          <Check className="size-3" />
+        <button
+          type="button"
+          onClick={handleRename}
+          className="p-1 rounded-md text-primary hover:bg-primary/15 transition-colors"
+          aria-label="Confirm rename"
+        >
+          <Check className="size-3.5" />
         </button>
       </div>
     )
@@ -87,22 +107,48 @@ export function SessionItem({
         ) : null}
       </button>
       {session.session_id && (
-        <span className="flex items-center gap-0.5 shrink-0 ml-auto lg:opacity-0 lg:group-hover:opacity-100 lg:transition-opacity">
+        <span
+          className={cn(
+            'flex items-center gap-0.5 shrink-0 ml-auto transition-opacity',
+            isActive
+              ? 'opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+          )}
+        >
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); setEditTitle(session.title || ''); setEditing(true) }}
-            className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation()
+              setEditTitle(session.title || '')
+              setEditing(true)
+            }}
+            className={cn(
+              'p-1 rounded-md transition-colors',
+              isActive
+                ? 'text-primary hover:text-primary hover:bg-primary/20'
+                : 'text-foreground/70 hover:text-primary hover:bg-accent',
+            )}
             aria-label="Rename session"
+            title="Rename session"
           >
-            <Pencil className="size-3" />
+            <Pencil className="size-3.5" />
           </button>
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); setConfirmDelete(true) }}
-            className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation()
+              setConfirmDelete(true)
+            }}
+            className={cn(
+              'p-1 rounded-md transition-colors',
+              isActive
+                ? 'text-primary/80 hover:text-destructive hover:bg-destructive/10'
+                : 'text-foreground/70 hover:text-destructive hover:bg-destructive/10',
+            )}
             aria-label="Delete session"
+            title="Delete session"
           >
-            <Trash2 className="size-3" />
+            <Trash2 className="size-3.5" />
           </button>
         </span>
       )}
