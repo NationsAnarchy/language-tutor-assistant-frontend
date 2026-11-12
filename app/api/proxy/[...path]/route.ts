@@ -56,6 +56,36 @@ async function proxyRequest(
     }
   }
 
+  // Prevent Cross-Site Request Forgery (CSRF) on state-changing operations
+  if (['POST', 'PATCH', 'DELETE'].includes(method)) {
+    const secFetchSite = request.headers.get('sec-fetch-site')
+    if (secFetchSite === 'cross-site') {
+      return NextResponse.json(
+        { detail: 'Cross-site request blocked', code: 'csrf_forbidden', request_id: requestId },
+        { status: 403, headers: { 'x-request-id': requestId } },
+      )
+    }
+
+    const origin = request.headers.get('origin')
+    const host = request.headers.get('host')
+    if (origin && host) {
+      try {
+        const originHost = new URL(origin).host
+        if (originHost !== host) {
+          return NextResponse.json(
+            { detail: 'Forbidden cross-origin request', code: 'csrf_forbidden', request_id: requestId },
+            { status: 403, headers: { 'x-request-id': requestId } },
+          )
+        }
+      } catch {
+        return NextResponse.json(
+          { detail: 'Invalid origin header', code: 'csrf_forbidden', request_id: requestId },
+          { status: 403, headers: { 'x-request-id': requestId } },
+        )
+      }
+    }
+  }
+
   const search = request.nextUrl.search
   const url = `${BACKEND_URL}${pathname}${search}`
 
@@ -63,12 +93,10 @@ async function proxyRequest(
   const headers = new Headers()
   headers.set('x-request-id', requestId)
 
-  const authHeader = request.headers.get('authorization')
-  if (authHeader) {
-    headers.set('authorization', authHeader)
-  } else if (session?.user?.id && process.env.AUTH_SECRET) {
-    // When the browser requests media directly (e.g. <audio src="...">), it sends
-    // session cookies without an Authorization header. Mint a backend JWT on behalf of the user.
+  // If the user has an authenticated NextAuth session, always mint a fresh backend JWT server-side.
+  // This guarantees the backend receives a cryptographically verified token bound to the current session,
+  // and eliminates the need for client-side JavaScript to ever fetch, hold, or expose raw JWT bearer tokens.
+  if (session?.user?.id && process.env.AUTH_SECRET) {
     const secret = new TextEncoder().encode(process.env.AUTH_SECRET)
     const token = await new SignJWT({
       sub: session.user.id,
@@ -80,6 +108,9 @@ async function proxyRequest(
       .setExpirationTime('1h')
       .sign(secret)
     headers.set('authorization', `Bearer ${token}`)
+  } else {
+    const authHeader = request.headers.get('authorization')
+    if (authHeader) headers.set('authorization', authHeader)
   }
 
   // Forward content-type for requests with a body (e.g. TTS sends JSON)
