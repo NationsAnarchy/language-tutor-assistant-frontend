@@ -1,20 +1,34 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
+import { Noto_Sans, Noto_Sans_JP, Noto_Sans_KR } from 'next/font/google'
 import { Toaster } from 'sonner'
-import '@fontsource/noto-sans/400.css'
-import '@fontsource/noto-sans/500.css'
-import '@fontsource/noto-sans/600.css'
-import '@fontsource/noto-sans/700.css'
-import '@fontsource/noto-sans-jp/400.css'
-import '@fontsource/noto-sans-jp/500.css'
-import '@fontsource/noto-sans-jp/700.css'
-import '@fontsource/noto-sans-kr/400.css'
-import '@fontsource/noto-sans-kr/500.css'
-import '@fontsource/noto-sans-kr/700.css'
 import { AuthSessionProvider } from '@/lib/auth/auth-provider'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { TabDetectorProvider } from '@/lib/providers/tab-detector-provider'
 import './globals.css'
+
+const notoSans = Noto_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-noto-sans',
+  display: 'swap',
+})
+
+const notoSansJP = Noto_Sans_JP({
+  subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  variable: '--font-noto-sans-jp',
+  display: 'swap',
+  preload: false,
+})
+
+const notoSansKR = Noto_Sans_KR({
+  subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  variable: '--font-noto-sans-kr',
+  display: 'swap',
+  preload: false,
+})
 
 export const metadata: Metadata = {
   title: 'LinguaAI — Trilingual Tutor',
@@ -40,7 +54,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className="bg-background"
+      className={`bg-background ${notoSans.variable} ${notoSansJP.variable} ${notoSansKR.variable}`}
       suppressHydrationWarning
     >
       <head>

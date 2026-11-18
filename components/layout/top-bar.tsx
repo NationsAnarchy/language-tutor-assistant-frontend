@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { Globe, LogOut, ChevronDown, Moon, Sun, Menu } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Globe, LogOut, ChevronDown, Moon, Sun, Menu as MenuIcon } from 'lucide-react'
+import { Menu } from '@base-ui/react/menu'
 import { Flag } from '@/components/ui/flag'
 import { LinguaLogo } from '@/components/auth/lingua-logo'
 import { useTheme } from '@/lib/hooks/use-theme'
@@ -46,32 +45,10 @@ function UserAvatar({ user }: { user: User }) {
 }
 
 export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, disabled, onToggleSidebar, sidebarOpen }: TopBarProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
   const { theme, toggle: toggleTheme } = useTheme()
 
   const langMeta = LANGUAGES.find((l) => l.value === language)
   const levelLabel = LEVEL_LABEL[level]
-
-  // Close on outside click
-  useEffect(() => {
-    function handleOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    if (menuOpen) document.addEventListener('mousedown', handleOutside)
-    return () => document.removeEventListener('mousedown', handleOutside)
-  }, [menuOpen])
-
-  // Close on Escape
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setMenuOpen(false)
-    }
-    if (menuOpen) document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [menuOpen])
 
   return (
     <header className="flex items-center justify-between px-4 h-14 border-b border-border bg-card/90 backdrop-blur-sm sticky top-0 z-20">
@@ -110,7 +87,7 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
             aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
             aria-expanded={sidebarOpen}
           >
-            <Menu className="size-4" aria-hidden="true" />
+            <MenuIcon className="size-4" aria-hidden="true" />
           </button>
         )}
 
@@ -140,35 +117,24 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
           Switch
         </button>
 
-        {/* User avatar + dropdown */}
-        <div className="relative" ref={menuRef}>
-          <button
-            type="button"
-            onClick={() => setMenuOpen((o) => !o)}
+        {/* User avatar + Base UI accessible dropdown menu */}
+        <Menu.Root>
+          <Menu.Trigger
             disabled={disabled}
-            className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40 disabled:pointer-events-none"
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
+            className="group flex items-center gap-1.5 rounded-lg px-1.5 py-1 hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Account menu"
           >
             <UserAvatar user={user} />
             <ChevronDown
-              className={cn(
-                'size-3.5 text-muted-foreground transition-transform duration-200',
-                menuOpen && 'rotate-180'
-              )}
+              className="size-3.5 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"
               aria-hidden="true"
             />
-          </button>
+          </Menu.Trigger>
 
-          {/* Dropdown — includes mobile-only controls */}
-          {menuOpen && (
-            <div
-              role="menu"
-              className="absolute right-0 top-full mt-1.5 w-56 rounded-xl border border-border bg-popover shadow-lg py-1 z-30 animate-in fade-in-0 zoom-in-95 slide-in-from-top-1 duration-150"
-            >
+          <Menu.Positioner side="bottom" align="end" sideOffset={6}>
+            <Menu.Popup className="w-56 rounded-xl border border-border bg-popover shadow-lg py-1 z-30 transition-all duration-150 data-[state=open]:opacity-100 data-[state=open]:scale-100 data-[state=closed]:opacity-0 data-[state=closed]:scale-95 focus:outline-none">
               {/* User info */}
-              <div className="px-3 py-2.5 border-b border-border mb-1">
+              <div className="px-3 py-2.5 border-b border-border mb-1 select-none">
                 <div className="flex items-center gap-2.5 mb-1.5">
                   <UserAvatar user={user} />
                   <div className="min-w-0">
@@ -179,23 +145,19 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
               </div>
 
               {/* Mobile-only: Switch language */}
-              <button
-                role="menuitem"
-                type="button"
-                onClick={() => { setMenuOpen(false); onSwitchLanguage() }}
+              <Menu.Item
+                onClick={onSwitchLanguage}
                 disabled={disabled}
-                className="sm:hidden w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors disabled:opacity-40"
+                className="sm:hidden w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent focus:bg-accent focus:outline-none transition-colors disabled:opacity-40 cursor-pointer"
               >
                 <Globe className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
                 Switch language
-              </button>
+              </Menu.Item>
 
               {/* Mobile-only: Theme toggle */}
-              <button
-                role="menuitem"
-                type="button"
-                onClick={() => { setMenuOpen(false); toggleTheme() }}
-                className="sm:hidden w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+              <Menu.Item
+                onClick={toggleTheme}
+                className="sm:hidden w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent focus:bg-accent focus:outline-none transition-colors cursor-pointer"
               >
                 {theme === 'dark' ? (
                   <Sun className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
@@ -203,21 +165,19 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
                   <Moon className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
                 )}
                 {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-              </button>
+              </Menu.Item>
 
               {/* Sign out */}
-              <button
-                role="menuitem"
-                type="button"
-                onClick={() => { setMenuOpen(false); onSignOut() }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+              <Menu.Item
+                onClick={onSignOut}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 focus:bg-destructive/10 focus:outline-none transition-colors cursor-pointer"
               >
-                <LogOut className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                <LogOut className="size-4 text-destructive shrink-0" aria-hidden="true" />
                 Sign out
-              </button>
-            </div>
-          )}
-        </div>
+              </Menu.Item>
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Root>
       </div>
     </header>
   )

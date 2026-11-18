@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { RefreshCcw, Send, BookOpen, Loader2, AlertCircle, CheckCircle2, CircleX, X, Lightbulb } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { Dialog } from '@base-ui/react/dialog'
 import { Button } from '@/components/ui/button'
 import { AudioPlayButton } from '../audio/audio-play-button'
 import { cn, handleEnterKey } from '@/lib/utils'
@@ -52,31 +53,7 @@ export function ExercisePanel({
 }: ExercisePanelProps) {
   const [answer, setAnswer] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const wasOpenRef = useRef(false)
-
-  // Focus answer textarea when drawer opens
-  useEffect(() => {
-    if (isOpen && !wasOpenRef.current) {
-      // Delay focus for the slide-up animation
-      const timer = setTimeout(() => {
-        textareaRef.current?.focus()
-      }, 300)
-      wasOpenRef.current = true
-      return () => clearTimeout(timer)
-    }
-    if (!isOpen) {
-      wasOpenRef.current = false
-    }
-  }, [isOpen])
-
-  // Handle Escape key to close
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && isOpen) onClose()
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [isOpen, onClose])
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const handleSubmit = () => {
     if (!answer.trim() || isLoading || !currentExercise) return
@@ -88,27 +65,20 @@ export function ExercisePanel({
   const feedbackIsCorrect = currentExercise?.feedback?.startsWith('Correct!')
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className={cn(
-          'fixed inset-0 z-55 bg-black/30 backdrop-blur-sm transition-opacity duration-300',
-          isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        )}
-        onClick={onClose}
-        aria-hidden="true"
-      />
+    <div ref={panelRef}>
+      <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
+        <Dialog.Portal container={panelRef}>
+          {/* Backdrop */}
+          <Dialog.Backdrop
+            className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm transition-opacity duration-300 data-[state=open]:opacity-100 data-[state=closed]:opacity-0"
+            aria-hidden="true"
+          />
 
-      {/* Drawer panel */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Exercise drawer"
-        className={cn(
-          'fixed bottom-0 left-0 right-0 z-65 flex flex-col max-h-[55vh] bg-card border-t border-border rounded-t-2xl shadow-2xl transition-transform duration-300 ease-out',
-          isOpen ? 'translate-y-0' : 'translate-y-full'
-        )}
-      >
+          {/* Drawer panel */}
+          <Dialog.Popup
+            aria-label="Exercise drawer"
+            className="fixed bottom-0 left-0 right-0 z-50 flex flex-col max-h-[55vh] bg-card border-t border-border rounded-t-2xl shadow-2xl transition-transform duration-300 ease-out data-[state=open]:translate-y-0 data-[state=closed]:translate-y-full focus:outline-none"
+          >
         {/* Drag handle / header row */}
         <div className="flex items-center justify-between px-4 pt-3.5 pb-2 shrink-0">
           <div className="flex items-center gap-2">
@@ -276,7 +246,9 @@ export function ExercisePanel({
             </>
           )}
         </div>
-      </div>
-    </>
+      </Dialog.Popup>
+    </Dialog.Portal>
+  </Dialog.Root>
+</div>
   )
 }

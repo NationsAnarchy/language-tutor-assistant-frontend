@@ -2,7 +2,7 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
-@custom-variant dark (&:is(.dark *));
+@variant dark (&:where(.dark, .dark *));
 @custom-variant group-hover (.group:hover &);
 
 /* Noto Sans supports Latin, Hangul, and CJK glyphs */
@@ -67,7 +67,7 @@
   --color-correction-bg: var(--correction-bg);
   --color-correction-text: var(--correction-text);
   --color-correction-border: var(--correction-border);
-  --font-sans: 'Noto Sans', 'Noto Sans KR', 'Noto Sans JP', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: var(--font-noto-sans), var(--font-noto-sans-kr), var(--font-noto-sans-jp), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 :root {
