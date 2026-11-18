@@ -131,52 +131,54 @@ export function TopBar({ user, language, level, onSwitchLanguage, onSignOut, dis
             />
           </Menu.Trigger>
 
-          <Menu.Positioner side="bottom" align="end" sideOffset={6}>
-            <Menu.Popup className="w-56 rounded-xl border border-border bg-popover shadow-lg py-1 z-30 transition-all duration-150 data-[state=open]:opacity-100 data-[state=open]:scale-100 data-[state=closed]:opacity-0 data-[state=closed]:scale-95 focus:outline-none">
-              {/* User info */}
-              <div className="px-3 py-2.5 border-b border-border mb-1 select-none">
-                <div className="flex items-center gap-2.5 mb-1.5">
-                  <UserAvatar user={user} />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-foreground truncate">{user.name}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+          <Menu.Portal>
+            <Menu.Positioner side="bottom" align="end" sideOffset={6}>
+              <Menu.Popup className="w-56 rounded-xl border border-border bg-popover shadow-lg py-1 z-30 transition-all duration-150 data-[state=open]:opacity-100 data-[state=open]:scale-100 data-[state=closed]:opacity-0 data-[state=closed]:scale-95 focus:outline-none">
+                {/* User info */}
+                <div className="px-3 py-2.5 border-b border-border mb-1 select-none">
+                  <div className="flex items-center gap-2.5 mb-1.5">
+                    <UserAvatar user={user} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground truncate">{user.name}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Mobile-only: Switch language */}
-              <Menu.Item
-                onClick={onSwitchLanguage}
-                disabled={disabled}
-                className="sm:hidden w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent focus:bg-accent focus:outline-none transition-colors disabled:opacity-40 cursor-pointer"
-              >
-                <Globe className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
-                Switch language
-              </Menu.Item>
+                {/* Mobile-only: Switch language */}
+                <Menu.Item
+                  onClick={onSwitchLanguage}
+                  disabled={disabled}
+                  className="sm:hidden w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent focus:bg-accent focus:outline-none transition-colors disabled:opacity-40 cursor-pointer"
+                >
+                  <Globe className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                  Switch language
+                </Menu.Item>
 
-              {/* Mobile-only: Theme toggle */}
-              <Menu.Item
-                onClick={toggleTheme}
-                className="sm:hidden w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent focus:bg-accent focus:outline-none transition-colors cursor-pointer"
-              >
-                {theme === 'dark' ? (
-                  <Sun className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
-                ) : (
-                  <Moon className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
-                )}
-                {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-              </Menu.Item>
+                {/* Mobile-only: Theme toggle */}
+                <Menu.Item
+                  onClick={toggleTheme}
+                  className="sm:hidden w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent focus:bg-accent focus:outline-none transition-colors cursor-pointer"
+                >
+                  {theme === 'dark' ? (
+                    <Sun className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                  ) : (
+                    <Moon className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                  )}
+                  {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                </Menu.Item>
 
-              {/* Sign out */}
-              <Menu.Item
-                onClick={onSignOut}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 focus:bg-destructive/10 focus:outline-none transition-colors cursor-pointer"
-              >
-                <LogOut className="size-4 text-destructive shrink-0" aria-hidden="true" />
-                Sign out
-              </Menu.Item>
-            </Menu.Popup>
-          </Menu.Positioner>
+                {/* Sign out */}
+                <Menu.Item
+                  onClick={onSignOut}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 focus:bg-destructive/10 focus:outline-none transition-colors cursor-pointer"
+                >
+                  <LogOut className="size-4 text-destructive shrink-0" aria-hidden="true" />
+                  Sign out
+                </Menu.Item>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
         </Menu.Root>
       </div>
     </header>

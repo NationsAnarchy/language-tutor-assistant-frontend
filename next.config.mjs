@@ -24,6 +24,7 @@ const nextConfig = {
       ...(isDev ? ["'unsafe-eval'"] : []),
       "'unsafe-inline'",
       "https://va.vercel-scripts.com",
+      "https://vercel.live",
     ].join(' ')
 
     const contentSecurityPolicy = [
@@ -33,7 +34,8 @@ const nextConfig = {
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https://cdn.jsdelivr.net https://lh3.googleusercontent.com https://avatars.githubusercontent.com",
       "media-src 'self' blob: data:",
-      "connect-src 'self' https://vitals.vercel-insights.com",
+      "connect-src 'self' https://vitals.vercel-insights.com https://vercel.live",
+      "frame-src 'self' https://vercel.live",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
