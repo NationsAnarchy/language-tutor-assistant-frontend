@@ -1,22 +1,19 @@
 import NextAuth from 'next-auth'
 import Google from 'next-auth/providers/google'
-import GitHub from 'next-auth/providers/github'
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  debug: process.env.NODE_ENV === 'development' && process.env.AUTH_DEBUG === 'true',
   providers: [
     Google({
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
     }),
-    GitHub({
-      clientId: process.env.AUTH_GITHUB_ID,
-      clientSecret: process.env.AUTH_GITHUB_SECRET,
-    }),
   ],
   callbacks: {
     jwt({ token, account, profile }) {
-      // Attach the user's email as sub for backend compatibility
-      if (profile?.email) {
+      // Attach the user's email as sub for backend compatibility (only if verified)
+      const emailVerified = (profile as { email_verified?: boolean } | undefined)?.email_verified
+      if (profile?.email && emailVerified !== false) {
         // Always use email as the stable user identifier across sign-ins
         // Provider sub may change per session; email is permanent
         token.sub = profile.email

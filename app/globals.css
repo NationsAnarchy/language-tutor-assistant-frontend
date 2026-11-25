@@ -2,7 +2,8 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
-@custom-variant dark (&:is(.dark *));
+@variant dark (&:where(.dark, .dark *));
+@custom-variant group-hover (.group:hover &);
 
 /* Noto Sans supports Latin, Hangul, and CJK glyphs */
 
@@ -66,7 +67,7 @@
   --color-correction-bg: var(--correction-bg);
   --color-correction-text: var(--correction-text);
   --color-correction-border: var(--correction-border);
-  --font-sans: 'Noto Sans', 'Noto Sans KR', 'Noto Sans JP', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: var(--font-noto-sans), var(--font-noto-sans-kr), var(--font-noto-sans-jp), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 :root {
@@ -166,6 +167,14 @@
   }
 }
 
+/* Subtle background grid pattern — shared by login-screen and multi-tab-overlay */
+.bg-grid-subtle {
+  background-image:
+    linear-gradient(to right, var(--color-foreground) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-foreground) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
 /* Markdown inside user bubble (primary background) — use white-tinted code blocks */
 .markdown-user code {
   background-color: rgb(255 255 255 / 18%) !important;
@@ -180,4 +189,16 @@
 }
 .markdown-user blockquote {
   border-left-color: rgb(255 255 255 / 35%) !important;
+}
+
+/* The chat composer gives the editor its own primary row on phones. Keep the
+   markdown editor compact there, while retaining its roomier desktop height. */
+.md-editor-wrap .w-md-editor {
+  height: 6rem !important;
+}
+
+@media (min-width: 640px) {
+  .md-editor-wrap .w-md-editor {
+    height: 8rem !important;
+  }
 }

@@ -1,24 +1,15 @@
-import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
-import { SignJWT } from 'jose'
 
+/**
+ * Security: This endpoint is retired.
+ *
+ * Backend JWTs are now minted exclusively on the server by the API proxy route
+ * (`app/api/proxy/[...path]`), preventing raw bearer tokens from ever being
+ * exposed to or stored in client-side JavaScript.
+ */
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  // Build a JWT the backend can verify with the same AUTH_SECRET
-  const secret = new TextEncoder().encode(process.env.AUTH_SECRET!)
-  const token = await new SignJWT({
-    sub: session.user.id,
-    email: session.user.email || '',
-    name: session.user.name || '',
-  })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('1h')
-    .sign(secret)
-
-  return NextResponse.json({ token })
+  return NextResponse.json(
+    { detail: 'Endpoint retired for security. Backend JWTs are managed server-side by the API proxy.' },
+    { status: 410 },
+  )
 }

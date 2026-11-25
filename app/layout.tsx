@@ -1,14 +1,34 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
+import { Noto_Sans, Noto_Sans_JP, Noto_Sans_KR } from 'next/font/google'
 import { Toaster } from 'sonner'
 import { AuthSessionProvider } from '@/lib/auth/auth-provider'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { TabDetectorProvider } from '@/lib/providers/tab-detector-provider'
 import './globals.css'
 
-// Google Fonts loaded at runtime via <link> — avoids Turbopack build-time download
-const GOOGLE_FONTS_URL =
-  'https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap'
+const notoSans = Noto_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-noto-sans',
+  display: 'swap',
+})
+
+const notoSansJP = Noto_Sans_JP({
+  subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  variable: '--font-noto-sans-jp',
+  display: 'swap',
+  preload: false,
+})
+
+const notoSansKR = Noto_Sans_KR({
+  subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  variable: '--font-noto-sans-kr',
+  display: 'swap',
+  preload: false,
+})
 
 export const metadata: Metadata = {
   title: 'LinguaAI — Trilingual Tutor',
@@ -34,13 +54,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className="bg-background"
+      className={`bg-background ${notoSans.variable} ${notoSansJP.variable} ${notoSansKR.variable}`}
       suppressHydrationWarning
     >
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href={GOOGLE_FONTS_URL} rel="stylesheet" />
         <script
           dangerouslySetInnerHTML={{
             __html: `try{var t=localStorage.getItem('linguaai-theme')||(window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.classList.toggle('dark',t==='dark');document.documentElement.style.colorScheme=t}catch(_){}`,

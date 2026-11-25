@@ -19,3 +19,10 @@ tsconfig.tsbuildinfo
 
 # For tracking issues
 issues.md
+
+# IDE folders
+.air/
+
+# Other
+next-env.d.ts
+tsconfig.tsbuildinfo

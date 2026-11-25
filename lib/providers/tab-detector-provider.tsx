@@ -9,9 +9,12 @@ import { MultiTabOverlay } from '@/components/ui/multi-tab-overlay'
 export function TabDetectorProvider({ children }: { children: React.ReactNode }) {
   const { tabState, electThisTab } = useMultiTabDetector()
 
-  if (tabState === 'multiple') {
-    return <MultiTabOverlay onElectThisTab={electThisTab} />
-  }
-
-  return <>{children}</>
+  return (
+    <>
+      {children}
+      {tabState === 'multiple' && (
+        <MultiTabOverlay onElectThisTab={electThisTab} />
+      )}
+    </>
+  )
 }

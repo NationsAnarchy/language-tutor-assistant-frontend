@@ -69,33 +69,48 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
   const [muted, setMuted] = useState(false)
   const [showControls, setShowControls] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioAbortControllerRef = useRef<AbortController | null>(null)
   const userPauseRef = useRef(false)
+  const currentTimeRef = useRef(0)
 
-  const resetAudio = useCallback(() => {
-    if (audioRef.current) {
-      audioManager.unregister(audioRef.current)
-      audioRef.current.pause()
-      audioRef.current.removeAttribute('src')
-      audioRef.current.load()
+  const releaseAudioElement = useCallback(() => {
+    const audio = audioRef.current
+    if (audio) {
+      userPauseRef.current = true
+      audioManager.unregister(audio)
+      audioAbortControllerRef.current?.abort()
+      audioAbortControllerRef.current = null
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
       audioRef.current = null
     }
-    setCurrentTime(0)
-    setDuration(0)
-    setShowControls(false)
   }, [])
 
   const cleanupElement = useCallback(() => {
-    if (audioRef.current) audioManager.unregister(audioRef.current)
-  }, [])
+    releaseAudioElement()
+    setAudioState('idle')
+    currentTimeRef.current = 0
+    setCurrentTime(0)
+    setDuration(0)
+    setShowControls(false)
+    setFailure(null)
+    userPauseRef.current = false
+  }, [releaseAudioElement])
 
-  const attachExternalHandlers = useCallback((audio: HTMLAudioElement) => {
+  const resetAudio = useCallback(() => {
+    cleanupElement()
+  }, [cleanupElement])
+
+  const attachExternalHandlers = useCallback((audio: HTMLAudioElement, signal?: AbortSignal) => {
     audio.addEventListener('pause', () => {
       if (!userPauseRef.current) {
         setAudioState('idle')
+        currentTimeRef.current = 0
         setCurrentTime(0)
       }
       userPauseRef.current = false
-    })
+    }, { signal })
   }, [])
 
   const handlePlay = useCallback(async () => {
@@ -109,8 +124,12 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
     }
 
     if (audioState === 'paused' && audioRef.current) {
-      await audioRef.current.play()
-      setAudioState('playing')
+      try {
+        await audioRef.current.play()
+        setAudioState('playing')
+      } catch {
+        setAudioState('idle')
+      }
       return
     }
 
@@ -120,8 +139,12 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
     }
 
     if (audioState === 'idle' && audioRef.current) {
-      audioRef.current.currentTime = 0
-      setCurrentTime(0)
+      if (audioRef.current.ended && currentTimeRef.current === 0) {
+        audioRef.current.currentTime = 0
+        setCurrentTime(0)
+      } else {
+        audioRef.current.currentTime = currentTimeRef.current
+      }
     }
 
     setAudioState('loading')
@@ -130,22 +153,37 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
       if (!audioRef.current) {
         const audio = new Audio(audioUrl)
         audio.crossOrigin = 'anonymous'
-        audio.volume = muted ? 0 : volume
+        audio.volume = volume
+        audio.muted = muted
         audioRef.current = audio
 
-        audio.addEventListener('timeupdate', () => setCurrentTime(audio.currentTime))
+        const controller = new AbortController()
+        audioAbortControllerRef.current = controller
+        const { signal } = controller
+
+        audio.addEventListener('timeupdate', () => {
+          currentTimeRef.current = audio.currentTime
+          setCurrentTime(audio.currentTime)
+        }, { signal })
         audio.addEventListener('loadedmetadata', () => {
           setDuration(audio.duration)
           setShowControls(true)
-        })
-        audio.addEventListener('ended', () => { setAudioState('idle'); setCurrentTime(0) })
+          if (currentTimeRef.current > 0) {
+            audio.currentTime = currentTimeRef.current
+          }
+        }, { signal })
+        audio.addEventListener('ended', () => {
+          setAudioState('idle')
+          currentTimeRef.current = 0
+          setCurrentTime(0)
+        }, { signal })
         audio.addEventListener('error', () => {
           setFailure(classifyMediaError(audio.error?.code))
           setAudioState('idle')
-        })
+        }, { signal })
 
         audioManager.register(audio)
-        attachExternalHandlers(audio)
+        attachExternalHandlers(audio, signal)
       }
 
       audioRef.current.playbackRate = speed === 'slow' ? 0.75 : 1.0
@@ -159,6 +197,7 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = parseFloat(e.target.value)
+    currentTimeRef.current = newTime
     if (audioRef.current) audioRef.current.currentTime = newTime
     setCurrentTime(newTime)
   }
@@ -170,7 +209,12 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseFloat(e.target.value)
-    if (audioRef.current) audioRef.current.volume = newVolume
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume
+      if (newVolume > 0 && audioRef.current.muted) {
+        audioRef.current.muted = false
+      }
+    }
     setVolume(newVolume)
     if (newVolume === 0) setMuted(true)
     else if (muted) setMuted(false)
@@ -184,7 +228,17 @@ export function useAudioPlayer(audioUrl?: string): UseAudioPlayerReturn {
     })
   }
 
-  useEffect(() => () => cleanupElement(), [cleanupElement])
+  // Dispose media element when component unmounts
+  useEffect(() => () => releaseAudioElement(), [releaseAudioElement])
+
+  // Reset audio state when source URL changes (skips initial mount)
+  const prevUrlRef = useRef(audioUrl)
+  useEffect(() => {
+    if (prevUrlRef.current !== audioUrl) {
+      prevUrlRef.current = audioUrl
+      cleanupElement()
+    }
+  }, [audioUrl, cleanupElement])
 
   const hasFailed = failure !== null
   const canRetry = hasFailed && isRetryable(failure)

@@ -1,44 +1,59 @@
 'use client'
 
-import { useState } from 'react'
-import { RefreshCcw, Send, BookOpen, Loader2, AlertCircle } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { RefreshCcw, Send, BookOpen, Loader2, AlertCircle, CheckCircle2, CircleX, X, Lightbulb } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { Dialog } from '@base-ui/react/dialog'
 import { Button } from '@/components/ui/button'
 import { AudioPlayButton } from '../audio/audio-play-button'
-import type { Language } from '@/lib/types'
+import { cn, handleEnterKey } from '@/lib/utils'
+import { markdownComponents } from '../ui/markdown-config'
+import { ANSWER_PLACEHOLDERS, type Language } from '@/lib/types'
+import { type PracticeType } from '@/lib/api'
+import { PracticeModePicker } from './practice-mode-picker'
 
 interface ExercisePanelProps {
   language: Language
   onSubmitAnswer: (answer: string) => void
   onRequestNew: () => void
+  onRequestHint?: () => void
+  practiceType: PracticeType
+  onPracticeTypeChange: (type: PracticeType) => void
   isLoading: boolean
   currentExercise?: {
     prompt: string
     audioUrl?: string
+    feedback?: string
+    feedbackAudioUrl?: string
   }
   /** Error message to display inline (e.g. from failed exercise generation). */
   error?: string | null
   /** Clear the error. */
   onDismissError?: () => void
-}
-
-const ANSWER_PLACEHOLDERS: Record<Language, string> = {
-  english: 'Type your answer in English...',
-  korean: '한국어로 답을 입력하세요...',
-  japanese: '日本語で答えを入力してください...',
+  /** Whether the drawer is open. */
+  isOpen: boolean
+  /** Close the drawer without submitting. */
+  onClose: () => void
 }
 
 export function ExercisePanel({
   language,
   onSubmitAnswer,
   onRequestNew,
+  onRequestHint,
+  practiceType,
+  onPracticeTypeChange,
   isLoading,
   currentExercise,
   error,
   onDismissError,
+  isOpen,
+  onClose,
 }: ExercisePanelProps) {
   const [answer, setAnswer] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const handleSubmit = () => {
     if (!answer.trim() || isLoading || !currentExercise) return
@@ -46,139 +61,194 @@ export function ExercisePanel({
     setAnswer('')
   }
 
-  const canSubmit = !!answer.trim() && !!currentExercise && !isLoading
+  const canSubmit = !!answer.trim() && !!currentExercise && !currentExercise.feedback && !isLoading
+  const feedbackIsCorrect = currentExercise?.feedback?.startsWith('Correct!')
 
   return (
-    <div className="flex flex-col gap-4 p-4 border-t border-border bg-card/60 backdrop-blur-sm">
-      {/* Header row */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <BookOpen className="size-3.5 text-muted-foreground" aria-hidden="true" />
-          <h3 className="text-sm font-semibold text-foreground">Exercise</h3>
-          {isLoading && (
-            <Loader2 className="size-3.5 text-muted-foreground animate-spin" aria-hidden="true" />
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={onRequestNew}
-          disabled={isLoading}
-          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md px-2 py-1 hover:bg-accent"
-          aria-label="Request a new exercise"
-        >
-          <RefreshCcw className={`size-3.5 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
-          New exercise
-        </button>
-      </div>
+    <div ref={panelRef}>
+      <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
+        <Dialog.Portal container={panelRef}>
+          {/* Backdrop */}
+          <Dialog.Backdrop
+            className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm transition-opacity duration-300 data-[state=open]:opacity-100 data-[state=closed]:opacity-0"
+            aria-hidden="true"
+          />
 
-      {/* Inline error */}
-      {error && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 px-3 py-2.5 rounded-xl border border-destructive/30 bg-destructive/5 text-xs text-destructive"
-        >
-          <AlertCircle className="size-3.5 shrink-0 mt-0.5" aria-hidden="true" />
-          <span className="flex-1 leading-relaxed">{error}</span>
-          {onDismissError && (
-            <button
-              type="button"
-              onClick={onDismissError}
-              className="text-[11px] opacity-70 hover:opacity-100 underline underline-offset-2 hover:no-underline shrink-0"
-            >
-              Dismiss
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Exercise prompt card */}
-      {currentExercise ? (
-        <div
-          className="rounded-xl border border-border bg-background px-4 py-3.5 flex gap-3 items-start shadow-xs"
-          role="region"
-          aria-label="Exercise prompt"
-        >
-          <div className="flex-1 min-w-0 text-sm text-foreground leading-relaxed">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-              table: ({ children, ...props }) => (
-                <div className="overflow-x-auto mb-2 last:mb-0">
-                  <table className="w-full text-xs border-collapse border border-border rounded-lg" {...props}>{children}</table>
-                </div>
-              ),
-              thead: ({ children, ...props }) => <thead className="bg-muted/60" {...props}>{children}</thead>,
-              tbody: ({ children, ...props }) => <tbody {...props}>{children}</tbody>,
-              tr: ({ children, ...props }) => <tr className="border-b border-border last:border-b-0" {...props}>{children}</tr>,
-              th: ({ children, ...props }) => <th className="px-3 py-2 text-left font-semibold text-foreground border-r border-border last:border-r-0" {...props}>{children}</th>,
-              td: ({ children, ...props }) => <td className="px-3 py-2 text-left text-foreground/90 border-r border-border last:border-r-0" {...props}>{children}</td>,
-            }}>
-              {currentExercise.prompt}
-            </ReactMarkdown>
+          {/* Drawer panel */}
+          <Dialog.Popup
+            aria-label="Exercise drawer"
+            className="fixed bottom-0 left-0 right-0 z-50 flex flex-col max-h-[55vh] bg-card border-t border-border rounded-t-2xl shadow-2xl transition-transform duration-300 ease-out data-[state=open]:translate-y-0 data-[state=closed]:translate-y-full focus:outline-none"
+          >
+        {/* Drag handle / header row */}
+        <div className="flex items-center justify-between px-4 pt-3.5 pb-2 shrink-0">
+          <div className="flex items-center gap-2">
+            <BookOpen className="size-3.5 text-muted-foreground" aria-hidden="true" />
+            <h3 className="text-sm font-semibold text-foreground">Exercise</h3>
+            <span className="text-xs text-muted-foreground capitalize">{practiceType === 'mistake_review' ? 'Recent mistakes' : practiceType}</span>
+            {isLoading && (
+              <Loader2 className="size-3.5 text-muted-foreground animate-spin" aria-hidden="true" />
+            )}
           </div>
-          {currentExercise.audioUrl && (
-            <AudioPlayButton
-              audioUrl={currentExercise.audioUrl}
-              className="shrink-0 mt-0.5"
-            />
-          )}
-        </div>
-      ) : (
-        <div
-          className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-4 flex items-center justify-center min-h-18"
-          aria-live="polite"
-        >
-          {isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              <span>Generating exercise...</span>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center">
-              Press{' '}
+          <div className="flex items-center gap-1.5">
+            {onRequestHint && (
               <button
                 type="button"
-                onClick={onRequestNew}
-                className="underline underline-offset-2 hover:no-underline text-foreground/70 hover:text-foreground transition-colors"
+                onClick={onRequestHint}
+                disabled={isLoading || !currentExercise || !!currentExercise.feedback}
+                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md px-2 py-1 hover:bg-accent"
+                aria-label="Request a hint"
               >
-                New exercise
-              </button>{' '}
-              to get started.
-            </p>
+                <Lightbulb className="size-3.5" aria-hidden="true" />
+                Hint
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onRequestNew}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md px-2 py-1 hover:bg-accent"
+              aria-label="Request a new exercise"
+            >
+              <RefreshCcw className={`size-3.5 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+              New exercise
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Close exercise drawer"
+            >
+              <X className="size-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+
+        {/* Inline error */}
+        {error && (
+          <div
+            role="alert"
+            className="mx-4 mb-2 flex items-start gap-2 px-3 py-2.5 rounded-xl border border-destructive/30 bg-destructive/5 text-xs text-destructive"
+          >
+            <AlertCircle className="size-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+            <span className="flex-1 leading-relaxed">{error}</span>
+            {onDismissError && (
+              <button
+                type="button"
+                onClick={onDismissError}
+                className="text-[11px] opacity-70 hover:opacity-100 underline underline-offset-2 hover:no-underline shrink-0"
+              >
+                Dismiss
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Scrollable content area */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-3">
+          <div className="mb-3">
+            <PracticeModePicker value={practiceType} onChange={onPracticeTypeChange} disabled={isLoading} />
+          </div>
+          {/* Exercise prompt card */}
+          {currentExercise ? (
+            <div className="space-y-3">
+              <div
+                className="rounded-xl border border-border bg-background px-4 py-3.5 flex gap-3 items-start shadow-xs"
+                role="region"
+                aria-label="Exercise prompt"
+              >
+                <div className="flex-1 min-w-0 text-sm text-foreground leading-relaxed">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                    {currentExercise.prompt}
+                  </ReactMarkdown>
+                </div>
+                {currentExercise.audioUrl && (
+                  <AudioPlayButton
+                    audioUrl={currentExercise.audioUrl}
+                    className="shrink-0 mt-0.5"
+                  />
+                )}
+              </div>
+              {currentExercise.feedback && (
+                <div
+                  className={cn(
+                    'rounded-xl border px-4 py-3.5 text-sm leading-relaxed shadow-xs',
+                    feedbackIsCorrect ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/5',
+                  )}
+                  role="status"
+                  aria-label={feedbackIsCorrect ? 'Correct answer feedback' : 'Answer feedback'}
+                >
+                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold">
+                    {feedbackIsCorrect ? <CheckCircle2 className="size-4 text-emerald-600" aria-hidden="true" /> : <CircleX className="size-4 text-amber-600" aria-hidden="true" />}
+                    {feedbackIsCorrect ? 'Correct' : 'Keep practicing'}
+                  </div>
+                  <div className="markdown-agent text-foreground">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                      {currentExercise.feedback}
+                    </ReactMarkdown>
+                  </div>
+                  {currentExercise.feedbackAudioUrl && <AudioPlayButton audioUrl={currentExercise.feedbackAudioUrl} className="mt-2" />}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-4 flex items-center justify-center min-h-18"
+              aria-live="polite"
+            >
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  <span>Generating exercise...</span>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center">
+                  Press{' '}
+                  <button
+                    type="button"
+                    onClick={onRequestNew}
+                    className="underline underline-offset-2 hover:no-underline text-foreground/70 hover:text-foreground transition-colors"
+                  >
+                    New exercise
+                  </button>{' '}
+                  to get started.
+                </p>
+              )}
+            </div>
           )}
         </div>
-      )}
 
-      {/* Answer input + submit */}
-      <div className="flex gap-2.5 items-end">
-        <textarea
-          value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          onKeyDown={(e) => {
-            if (
-              e.key === 'Enter' &&
-              !e.shiftKey &&
-              !e.nativeEvent.isComposing &&
-              !(e.keyCode === 229)
-            ) {
-              e.preventDefault()
-              handleSubmit()
-            }
-          }}
-          placeholder={ANSWER_PLACEHOLDERS[language]}
-          rows={2}
-          disabled={!currentExercise || isLoading}
-          aria-label="Your answer"
-          className="flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all disabled:opacity-50 leading-relaxed shadow-xs"
-        />
-        <Button
-          size="sm"
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          className="h-19 w-10 p-0 rounded-xl shrink-0 flex-col gap-1"
-          aria-label="Submit answer"
-        >
-          <Send className="size-4" aria-hidden="true" />
-        </Button>
-      </div>
-    </div>
+        {/* Answer input + submit */}
+        <div className="flex gap-2.5 items-end px-4 pb-4 pt-2 border-t border-border/60 shrink-0">
+          {currentExercise?.feedback ? (
+            <p className="flex-1 text-sm text-muted-foreground">Choose <span className="font-medium text-foreground">New exercise</span> when you&apos;re ready for another question.</p>
+          ) : (
+            <>
+              <textarea
+                ref={textareaRef}
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                onKeyDown={(e) => handleEnterKey(e, handleSubmit)}
+                placeholder={ANSWER_PLACEHOLDERS[language]}
+                rows={2}
+                disabled={!currentExercise || isLoading}
+                aria-label="Your answer"
+                className="flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all disabled:opacity-50 leading-relaxed shadow-xs"
+              />
+              <Button
+                size="sm"
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                className="h-19 w-10 p-0 rounded-xl shrink-0 flex-col gap-1"
+                aria-label="Submit answer"
+              >
+                <Send className="size-4" aria-hidden="true" />
+              </Button>
+            </>
+          )}
+        </div>
+      </Dialog.Popup>
+    </Dialog.Portal>
+  </Dialog.Root>
+</div>
   )
 }

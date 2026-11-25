@@ -1,9 +1,9 @@
 'use client'
 
-export function LinguaLogo({ size = 'lg' }: { size?: 'sm' | 'lg' }) {
-  const dim = size === 'lg' ? 'size-16' : 'size-9'
-  const iconDim = size === 'lg' ? 'size-8' : 'size-5'
-  const radius = size === 'lg' ? 'rounded-2xl' : 'rounded-xl'
+export function LinguaLogo({ size = 'lg' }: { size?: 'xs' | 'sm' | 'lg' }) {
+  const dim = size === 'lg' ? 'size-16' : size === 'sm' ? 'size-9' : 'size-7'
+  const iconDim = size === 'lg' ? 'size-8' : size === 'sm' ? 'size-5' : 'size-4'
+  const radius = size === 'lg' ? 'rounded-2xl' : size === 'sm' ? 'rounded-xl' : 'rounded-lg'
   return (
     <div className={`${dim} ${radius} bg-primary flex items-center justify-center shadow-md`}>
       <svg

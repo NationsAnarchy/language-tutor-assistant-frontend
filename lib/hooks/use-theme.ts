@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { writeStoredValue } from '@/lib/browser-storage'
 
 type Theme = 'light' | 'dark'
 
@@ -22,6 +23,8 @@ function applyTheme(theme: Theme) {
   const root = document.documentElement
   root.classList.toggle('dark', theme === 'dark')
   root.style.colorScheme = theme
+  // MDEditor CSS requires data-color-mode on the document element to switch themes
+  root.setAttribute('data-color-mode', theme)
 }
 
 export function useTheme() {
@@ -35,7 +38,7 @@ export function useTheme() {
   const toggle = useCallback(() => {
     setThemeState((prev) => {
       const next = prev === 'dark' ? 'light' : 'dark'
-      localStorage.setItem(STORAGE_KEY, next)
+      writeStoredValue(localStorage, STORAGE_KEY, next)
       return next
     })
   }, [])

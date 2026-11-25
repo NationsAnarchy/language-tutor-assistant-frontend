@@ -1,56 +1,39 @@
-'use client'
+"use client";
 
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { Send, BookOpen, MessageSquare, Sparkles } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import { TopBar } from '../layout/top-bar'
-import { ChatBubble } from './chat-bubble'
-import { ChatBubbleError } from './chat-bubble-error'
-import { ExercisePanel } from './exercise-panel'
-import {
-  sendChatStream,
-  audioUrl,
-  getSession,
-  synthesizeAudio,
-  getCachedAudioUrl,
-  invalidateSessionCache,
-  clearTokenCache,
-  ApiError,
-} from '@/lib/api'
-import { toast } from '@/lib/toast'
-import type { Language, Level, User, Message, ChatMode } from '@/lib/types'
-import { CHAT_PLACEHOLDERS } from '@/lib/types'
+import { useState, useRef, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { Send, BookOpen, Sparkles, Loader2, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TopBar } from "../layout/top-bar";
+import { ChatMessageList } from "./chat-message-list";
+import { ExercisePanel } from "./exercise-panel";
+import { MistakesPanel } from "./mistakes-panel";
+import type { PracticeType } from "@/lib/api";
+import type { Language, Level, User, Message } from "@/lib/types";
+import { CHAT_PLACEHOLDERS } from "@/lib/types";
+import { STARTER_PROMPTS } from "./chat-helpers";
+import { useChatWorkflow } from "./use-chat-workflow";
 
-// Starter prompt suggestions per language
-const STARTER_PROMPTS: Record<Language, string[]> = {
-  korean: ['안녕하세요 — introduce yourself', '날씨에 대해 이야기해요', '식당을 추천해주세요'],
-  japanese: ['自己紹介をしてください', '趣味について話しましょう', 'おすすめの場所を教えて'],
-  english: ['Introduce yourself', 'Describe your daily routine', 'Talk about a hobby'],
-}
+const MarkdownEditor = dynamic(() => import('./markdown-editor'), {
+  ssr: false,
+  loading: () => <div className="h-32 p-3 text-sm text-muted-foreground" role="status">Loading message editor…</div>,
+})
 
-/** Per-message error state attached to a failed user message. */
-interface MessageError {
-  message: string
-  retryable: boolean
-  /** The original content to resend on retry. */
-  originalContent: string
-}
 
 interface ChatScreenProps {
-  user: User
-  language: Language
-  level: Level
-  sessionId: string | null
-  initialMessages?: Message[]
-  onSwitchLanguage: () => void
-  onSignOut: () => void
-  onLoadingChange?: (loading: boolean) => void
+  user: User;
+  language: Language;
+  level: Level;
+  sessionId: string | null;
+  initialMessages?: Message[];
+  onSwitchLanguage: () => void;
+  onSignOut: () => void;
+  onLoadingChange?: (loading: boolean) => void;
   /** Callback to toggle the session sidebar on mobile. */
-  onToggleSidebar?: () => void
+  onToggleSidebar?: () => void;
   /** Whether the sidebar is currently open. */
-  sidebarOpen?: boolean
+  sidebarOpen?: boolean;
 }
 
 export function ChatScreen({
@@ -65,412 +48,147 @@ export function ChatScreen({
   onToggleSidebar,
   sidebarOpen,
 }: ChatScreenProps) {
-  const router = useRouter()
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
-  const [inputValue, setInputValue] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [mode, setMode] = useState<ChatMode>('chat')
-  const [currentExercise, setCurrentExercise] = useState<{ prompt: string; audioUrl?: string } | undefined>(undefined)
-  const [isExerciseLoading, setIsExerciseLoading] = useState(false)
-  /** Map of messageId → error info for failed user messages. */
-  const [messageErrors, setMessageErrors] = useState<Map<string, MessageError>>(new Map())
-  /** Audio failure hints: messageId → hint text. */
-  const [audioFailures, setAudioFailures] = useState<Map<string, string>>(new Map())
+  const router = useRouter();
+  const [inputValue, setInputValue] = useState("");
+  const [editorReady, setEditorReady] = useState(false);
+  const [isExerciseDrawerOpen, setIsExerciseDrawerOpen] = useState(false);
+  const [currentExercise, setCurrentExercise] = useState<
+    { prompt: string; audioUrl?: string; feedback?: string; feedbackAudioUrl?: string } | undefined
+  >(undefined);
+  const [isExerciseLoading, setIsExerciseLoading] = useState(false);
+  const [practiceType, setPracticeType] = useState<PracticeType>("grammar");
   /** Exercise-panel-local error (shown inline, not as a toast). */
-  const [exerciseError, setExerciseError] = useState<string | null>(null)
+  const [exerciseError, setExerciseError] = useState<string | null>(null);
+  /** Whether the mistakes review panel is visible. */
+  const [showMistakes, setShowMistakes] = useState(false);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const abortRef = useRef<AbortController | null>(null)
-  const audioAbortRef = useRef<AbortController | null>(null)
-  const prevLoadingRef = useRef(false)
-  const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null)
-
-  // Cancel in-flight request when session changes or component unmounts (Issue #14)
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort()
-      audioAbortRef.current?.abort()
-    }
-  }, [sessionId])
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { messages, isLoading, messageErrors, audioFailures, audioLoadingId, submit, requestPractice, requestHint, retryAudio, dismissError } = useChatWorkflow({ sessionId, language, initialMessages, router });
 
   // Load initial messages when session changes (e.g., resuming after sign-out)
   // Always set — empty array is valid for a new session (fixes Issue #10).
   useEffect(() => {
-    setMessages(initialMessages)
-    // Clear per-message errors when switching sessions
-    setMessageErrors(new Map())
-    setAudioFailures(new Map())
-  }, [initialMessages])
+    // Reset exercise state for the new conversation
+    setCurrentExercise(undefined);
+    setIsExerciseDrawerOpen(false);
+    setIsExerciseLoading(false);
+    setExerciseError(null);
+  }, [initialMessages]);
 
-  // Fallback: if we have a sessionId but no messages, try loading history from backend.
-  // Keyed on sessionId so switching to a new (empty) session clears stale messages.
+  // Auto-scroll to bottom on new messages.
+  // Use instant scroll during active streaming (tokens arrive faster than a smooth
+  // animation can complete, causing jank) and smooth for completed responses.
   useEffect(() => {
-    if (!sessionId || sessionId === 'demo-session') return
-
-    // Check if initialMessages already covered this session
-    if (initialMessages.length > 0) return
-    
-    let cancelled = false
-    
-    getSession(sessionId).then((data) => {
-      if (cancelled) return
-      const history: Message[] = (data.chat_history || []).map((msg, i) => {
-        // Build audio URL: prefer cached audio_hash (zero-cost replay, no Gemini API call),
-        // fall back to audio_url for legacy compatibility.
-        let msgAudioUrl: string | undefined
-        if (msg.audio_hash) {
-          const cachedUrl = getCachedAudioUrl(msg.audio_hash)
-          if (cachedUrl) msgAudioUrl = cachedUrl
-        } else if (msg.audio_url) {
-          msgAudioUrl = audioUrl(msg.audio_url) || undefined
-        }
-        return {
-          id: `history-${i}`,
-          role: msg.role === 'user' ? 'user' as const : 'agent' as const,
-          content: msg.content,
-          audioUrl: msgAudioUrl,
-          timestamp: new Date(),
-        }
-      })
-      if (history.length > 0) {
-        setMessages(history)
-      }
-    }).catch(() => {/* ignore */})
-    
-    return () => { cancelled = true }
-  }, [sessionId, initialMessages])
-
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isLoading])
+    messagesEndRef.current?.scrollIntoView({
+      behavior: isLoading ? "instant" : "smooth",
+    });
+  }, [messages, isLoading]);
 
   // Notify parent of loading state (Issue #35)
   useEffect(() => {
-    onLoadingChange?.(isLoading)
-  }, [isLoading, onLoadingChange])
+    onLoadingChange?.(isLoading);
+  }, [isLoading, onLoadingChange]);
 
-  // Autofocus chat input after agent response is rendered (Issue #39)
-  // No need to wait for audio synthesis — just the text response.
-  useEffect(() => {
-    if (prevLoadingRef.current && !isLoading && mode === 'chat') {
-      textareaRef.current?.focus()
-    }
-    prevLoadingRef.current = isLoading
-  }, [isLoading, mode])
+  // Wire markdown editor value changes to input state.
+  const handleEditorChange = useCallback((value?: string) => {
+    setInputValue(value || "");
+  }, []);
 
-  // Auto-resize textarea
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 128)}px`
-  }, [inputValue])
+  const sendMessage = useCallback(
+    async (content: string, retryOfId?: string) => {
+      if (!content.trim()) return;
+      if (!retryOfId) setInputValue("");
+      await submit(content, { retryOfId });
+    },
+    [submit],
+  );
 
-  /**
-   * Handle an ApiError: show toast for global events (auth, network),
-   * and return a user-friendly message for inline display.
-   */
-  const handleError = useCallback((err: unknown): { message: string; retryable: boolean } => {
-    if (err instanceof ApiError) {
-      switch (err.code) {
-        case 'auth':
-          clearTokenCache()
-          toast.error(err.message, {
-            description: 'Redirecting you to sign in…',
-            duration: 3000,
-          })
-          // Redirect after a short delay so the user sees the toast
-          setTimeout(() => router.replace('/login'), 1500)
-          return { message: err.message, retryable: false }
-
-        case 'network':
-          toast.error(err.message, {
-            action: { label: 'Retry', onClick: () => {} },
-          })
-          return { message: err.message, retryable: true }
-
-        case 'timeout':
-          toast.warning(err.message)
-          return { message: err.message, retryable: true }
-
-        case 'server':
-          toast.error(err.message)
-          return { message: err.message, retryable: true }
-
-        case 'rate_limit':
-          toast.warning(err.message)
-          return { message: err.message, retryable: true }
-
-        case 'forbidden':
-          toast.error(err.message)
-          return { message: err.message, retryable: false }
-
-        case 'not_found':
-          toast.error(err.message)
-          return { message: err.message, retryable: false }
-
-        default:
-          toast.error(err.message || 'Something went wrong.')
-          return { message: err.message || 'Something went wrong.', retryable: false }
-      }
-    }
-
-    // Fallback for non-ApiError
-    const msg = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
-    toast.error(msg)
-    return { message: msg, retryable: false }
-  }, [router])
-
-  const sendMessage = useCallback(async (content: string, retryOfId?: string) => {
-    if (!content.trim()) return
-
-    const userMsg: Message = {
-      id: retryOfId || Date.now().toString(),
-      role: 'user',
-      content,
-      timestamp: new Date(),
-    }
-
-    // If retrying, remove the old error
-    if (retryOfId) {
-      setMessageErrors((prev) => {
-        const next = new Map(prev)
-        next.delete(retryOfId)
-        return next
-      })
-      // Replace the old message in the list
-      setMessages((prev) => prev.map((m) => m.id === retryOfId ? userMsg : m))
-    } else {
-      setMessages((prev) => [...prev, userMsg])
-      setInputValue('')
-    }
-
-    setIsLoading(true)
-
-    try {
-      if (!sessionId || sessionId === 'demo-session') {
-        // Demo fallback when backend isn't available
-        await new Promise((r) => setTimeout(r, 1800))
-        const agentMsg: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'agent',
-          content:
-            language === 'korean'
-              ? '백엔드에 연결되지 않았어요. uvicorn app.main:app --reload 로 백엔드를 시작해 주세요.'
-              : language === 'japanese'
-                ? 'バックエンドに接続できませんでした。uvicorn app.main:app --reload でバックエンドを起動してください。'
-                : 'Backend not connected. Start it with: uvicorn app.main:app --reload',
-          timestamp: new Date(),
-        }
-        setMessages((prev) => [...prev, agentMsg])
-      } else {
-        // Abort any previous in-flight request (Issue #14)
-        abortRef.current?.abort()
-        const controller = new AbortController()
-        abortRef.current = controller
-
-        // Placeholder agent message — tokens stream into it
-        const msgId = (Date.now() + 1).toString()
-        const agentMsg: Message = {
-          id: msgId,
-          role: 'agent',
-          content: '',
-          timestamp: new Date(),
-        }
-        setMessages((prev) => [...prev, agentMsg])
-
-        // Stream tokens in real time via SSE
-        const streamingResult = await sendChatStream(
-          sessionId,
-          content,
-          (event) => {
-            if (event.type === 'token' && event.content) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === msgId ? { ...m, content: m.content + event.content } : m,
-                ),
-              )
-            }
-          },
-          controller.signal,
-        )
-
-        // Invalidate cache so next visit to this session gets fresh history
-        invalidateSessionCache(sessionId)
-        setIsLoading(false)
-
-        // Use a fresh AbortController for each TTS request.
-        // Pass the message content so the backend can match the exact message
-        // and set audio_hash correctly, even if concurrent TTS requests exist.
-        const audioController = new AbortController()
-        audioAbortRef.current = audioController
-
-        // Show audio loading indicator, then synthesize in background (Issue #22)
-        setAudioLoadingId(msgId)
-        synthesizeAudio(sessionId, streamingResult.reply, audioController.signal).then((url) => {
-          if (audioController.signal.aborted) return
-          setAudioLoadingId(null)
-          if (url) {
-            setMessages((prev) =>
-              prev.map((m) => (m.id === msgId ? { ...m, audioUrl: url } : m)),
-            )
-          }
-        }).catch((audioErr) => {
-          if (audioController.signal.aborted) return
-          setAudioLoadingId(null)
-          // Show inline audio failure hint instead of silently dropping
-          const hint = audioErr instanceof ApiError
-            ? "Audio couldn't be generated right now."
-            : 'Audio unavailable.'
-          setAudioFailures((prev) => new Map(prev).set(msgId, hint))
-        })
-        return
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        // User-initiated cancel (session switch) — don't show error
-        return
-      }
-      const { message, retryable } = handleError(err)
-      setMessageErrors((prev) => new Map(prev).set(userMsg.id, {
-        message,
-        retryable,
-        originalContent: content,
-      }))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [sessionId, language, handleError])
-
-  const handleRetry = useCallback((messageId: string) => {
-    const errorInfo = messageErrors.get(messageId)
-    if (!errorInfo) return
-    sendMessage(errorInfo.originalContent, messageId)
-  }, [messageErrors, sendMessage])
+  const handleRetry = useCallback(
+    (messageId: string) => {
+      const errorInfo = messageErrors.get(messageId);
+      if (!errorInfo) return;
+      sendMessage(errorInfo.originalContent, messageId);
+    },
+    [messageErrors, sendMessage],
+  );
 
   const handleDismissError = useCallback((messageId: string) => {
-    setMessageErrors((prev) => {
-      const next = new Map(prev)
-      next.delete(messageId)
-      return next
-    })
-  }, [])
+    dismissError(messageId);
+  }, [dismissError]);
 
-  const handleSend = () => {
-    if (!inputValue.trim() || isLoading) return
-    sendMessage(inputValue)
-  }
+  const handleSend = useCallback(() => {
+    if (!inputValue.trim() || isLoading) return;
+    sendMessage(inputValue);
+  }, [inputValue, isLoading, sendMessage]);
+
+  // Ref to wrap MDEditor for Cmd/Ctrl+Enter keyboard capture
+  const editorWrapRef = useRef<HTMLDivElement>(null);
+
+  // Cmd/Ctrl+Enter to send, Enter & Shift+Enter for new line (IME-safe,
+  // because modifier-qualified keypresses bypass IME composition)
+  useEffect(() => {
+    const container = editorWrapRef.current;
+    if (!container) return;
+    const handler = (e: KeyboardEvent) => {
+      // Match handleEnterKey semantics (lib/utils.ts): Cmd (mac) or Ctrl
+      // (other platforms) + Enter submits. Plain Enter and Shift+Enter fall
+      // through to the textarea default (newline), so IME confirm with Enter
+      // never accidentally sends.
+      if (
+        e.key === "Enter" &&
+        (e.metaKey || e.ctrlKey) &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        handleSend();
+      }
+    };
+    container.addEventListener("keydown", handler, true);
+    return () => container.removeEventListener("keydown", handler, true);
+  }, [handleSend]);
 
   const handleExerciseSubmit = async (answer: string) => {
-    if (!sessionId || sessionId === 'demo-session') {
-      // Demo fallback
-      const userMsg: Message = {
-        id: Date.now().toString(),
-        role: 'user',
-        content: answer,
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, userMsg])
-      setIsLoading(true)
-      await new Promise((r) => setTimeout(r, 1600))
-      const feedbackMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'agent',
-        content: 'Backend not available — start it with: uvicorn app.main:app --reload',
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, feedbackMsg])
-      setIsLoading(false)
-      return
-    }
+    await submit(answer, {
+      beforeSubmit: () => setCurrentExercise((previous) => previous ? { ...previous, feedback: undefined, feedbackAudioUrl: undefined } : previous),
+      onComplete: (feedback) => setCurrentExercise((previous) => previous ? { ...previous, feedback } : previous),
+      onAudio: (feedbackAudioUrl) => setCurrentExercise((previous) => previous ? { ...previous, feedbackAudioUrl } : previous),
+      onError: setExerciseError,
+      demoResponse: "Backend not available — start it with: uvicorn app.main:app --reload",
+    });
+  };
 
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: answer,
-      timestamp: new Date(),
-    }
-    setMessages((prev) => [...prev, userMsg])
-    setIsLoading(true)
+  const handleRequestNewExercise = useCallback(async (selectedType: PracticeType = practiceType) => {
+    if (isLoading || isExerciseLoading) return;
+    setIsExerciseLoading(true);
+    setCurrentExercise(undefined);
+    setExerciseError(null);
+    await requestPractice(selectedType, {
+      onComplete: (prompt) => { setCurrentExercise({ prompt }); setIsExerciseDrawerOpen(true); },
+      onAudio: (audioUrl) => setCurrentExercise((previous) => previous ? { ...previous, audioUrl } : previous),
+      onError: setExerciseError,
+      demoResponse: language === "korean"
+        ? '다음 문장을 한국어로 번역하세요: "I went to the market yesterday to buy vegetables."'
+        : language === "japanese"
+          ? '次の文章を日本語に訳してください: "I went to the market yesterday to buy vegetables."'
+          : 'Translate the following sentence into your target language: "I went to the market yesterday to buy vegetables."',
+    });
+    setIsExerciseLoading(false);
+  }, [isExerciseLoading, isLoading, language, practiceType, requestPractice]);
 
-    try {
-      // Submit exercise answer as a chat message — the agent handles intent routing
-      const feedbackMsgId = (Date.now() + 1).toString()
-      const feedbackMsg: Message = {
-        id: feedbackMsgId,
-        role: 'agent',
-        content: '',
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, feedbackMsg])
+  const handlePracticeMistakes = useCallback(() => {
+    setPracticeType("mistake_review");
+    setIsExerciseDrawerOpen(true);
+    void handleRequestNewExercise("mistake_review");
+  }, [handleRequestNewExercise]);
 
-      const exerciseResult = await sendChatStream(
-        sessionId,
-        answer,
-        (event) => {
-          if (event.type === 'token' && event.content) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === feedbackMsgId ? { ...m, content: m.content + event.content } : m,
-              ),
-            )
-          }
-        },
-      )
-      invalidateSessionCache(sessionId)
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      handleError(err)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const handleRequestHint = useCallback(async () => {
+    if (isLoading || isExerciseLoading || !currentExercise) return;
+    await requestHint({
+      onError: setExerciseError,
+    });
+  }, [currentExercise, isExerciseLoading, isLoading, requestHint]);
 
-  const handleRequestNewExercise = async () => {
-    setIsExerciseLoading(true)
-    setCurrentExercise(undefined)
-
-    if (!sessionId || sessionId === 'demo-session') {
-      await new Promise((r) => setTimeout(r, 1200))
-      setCurrentExercise({
-        prompt: language === 'korean'
-          ? '다음 문장을 한국어로 번역하세요: "I went to the market yesterday to buy vegetables."'
-          : language === 'japanese'
-            ? '次の文章を日本語に訳してください: "I went to the market yesterday to buy vegetables."'
-            : 'Translate the following sentence into your target language: "I went to the market yesterday to buy vegetables."',
-      })
-      setIsExerciseLoading(false)
-      return
-    }
-
-    setExerciseError(null)
-    try {
-      // Request a new exercise via the chat endpoint
-      const exercisePrompt = language === 'korean'
-        ? '새로운 연습 문제를 만들어 주세요.'
-        : language === 'japanese'
-          ? '新しい練習問題を作ってください。'
-          : 'Please generate a new exercise for me.'
-
-      const exResult = await sendChatStream(
-        sessionId,
-        exercisePrompt,
-        () => {}, // no-op — exercise panel renders the full prompt at the end
-      )
-      setCurrentExercise({ prompt: exResult.reply })
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      // Show error inline in the exercise panel instead of as a toast
-      const msg = err instanceof ApiError ? err.message : 'Failed to generate exercise. Please try again.'
-      setExerciseError(msg)
-    } finally {
-      setIsExerciseLoading(false)
-    }
-  }
-
-  const isEmpty = messages.length === 0
+  const isEmpty = messages.length === 0;
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -485,52 +203,6 @@ export function ChatScreen({
         sidebarOpen={sidebarOpen}
       />
 
-      {/* Mode toggle tabs */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-border bg-card/60 backdrop-blur-sm">
-        <div
-          className="flex items-center gap-1 p-1 rounded-xl bg-muted/50 border border-border/60"
-          role="tablist"
-          aria-label="Chat mode"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'chat'}
-            onClick={() => setMode('chat')}
-            disabled={isLoading}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              mode === 'chat'
-                ? 'bg-background text-foreground shadow-sm border border-border/60'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <MessageSquare className="size-3.5" aria-hidden="true" />
-            Chat
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'exercise'}
-            onClick={() => setMode('exercise')}
-            disabled={isLoading}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              mode === 'exercise'
-                ? 'bg-background text-foreground shadow-sm border border-border/60'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <BookOpen className="size-3.5" aria-hidden="true" />
-            Exercise
-          </button>
-        </div>
-
-        <div className="ml-auto text-xs text-muted-foreground hidden sm:block">
-          {mode === 'exercise' ? 'Answer the prompt below' : 'Learn languages with your AI tutor'}
-        </div>
-      </div>
-
       {/* Empty state — separate from scrollable message area to avoid any overflow */}
       {isEmpty ? (
         <main
@@ -541,16 +213,21 @@ export function ChatScreen({
             <Sparkles className="size-7 text-primary" aria-hidden="true" />
           </div>
           <div>
-            <p className="font-bold text-foreground text-base">Ready to practice!</p>
+            <p className="font-bold text-foreground text-base">
+              Ready to practice!
+            </p>
             <p className="text-sm text-muted-foreground mt-1.5 max-w-xs leading-relaxed text-pretty">
-              {language === 'korean'
-                ? '한국어로 말씀해 보세요. 틀려도 괜찮아요 — 함께 고쳐 나가겠습니다.'
-                : language === 'japanese'
-                  ? '日本語で話してみてください。間違えても大丈夫です。'
-                  : 'Say anything to get started — mistakes are welcome, your tutor will help.'}
+              {language === "korean"
+                ? "한국어로 말씀해 보세요. 틀려도 괜찮아요 — 함께 고쳐 나가겠습니다."
+                : language === "japanese"
+                  ? "日本語で話してみてください。間違えても大丈夫です。"
+                  : "Say anything to get started — mistakes are welcome, your tutor will help."}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2 justify-center max-w-sm" aria-label="Suggested starters">
+          <div
+            className="flex flex-wrap gap-2 justify-center max-w-sm"
+            aria-label="Suggested starters"
+          >
             {STARTER_PROMPTS[language].map((prompt) => (
               <button
                 key={prompt}
@@ -565,73 +242,76 @@ export function ChatScreen({
           </div>
         </main>
       ) : (
-        <main
-          className="flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-5"
-          aria-label="Conversation"
-          aria-live="polite"
-          aria-atomic="false"
-        >
-          {/* Messages */}
-          {messages.map((msg) => (
-            <div key={msg.id}>
-              <ChatBubble
-                message={msg}
-                isAudioLoading={audioLoadingId === msg.id}
-                audioFailureHint={audioFailures.get(msg.id)}
-              />
-              {messageErrors.has(msg.id) && (
-                <ChatBubbleError
-                  message={messageErrors.get(msg.id)!.message}
-                  onRetry={messageErrors.get(msg.id)!.retryable ? () => handleRetry(msg.id) : undefined}
-                  onDismiss={() => handleDismissError(msg.id)}
-                />
-              )}
+        <ChatMessageList messages={messages} audioLoadingId={audioLoadingId} audioFailures={audioFailures} errors={messageErrors} onRetry={handleRetry} onRetryAudio={retryAudio} onDismiss={handleDismissError} endRef={messagesEndRef} />
+      )}
+
+      {/* Mistakes review panel — collapsible inline section */}
+      {showMistakes && sessionId && sessionId !== "demo-session" && (
+        <div className="border-t border-border bg-card/50 shrink-0">
+          <div className="max-w-3xl mx-auto">
+            <div className="flex items-center justify-between px-4 pt-3">
+              <h3 className="text-sm font-semibold text-foreground">Mistakes to Review</h3>
+              <button
+                type="button"
+                onClick={() => setShowMistakes(false)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Close
+              </button>
             </div>
-          ))}
-
-          <div ref={messagesEndRef} />
-        </main>
+            <MistakesPanel sessionId={sessionId} onRequestPractice={handlePracticeMistakes} />
+          </div>
+        </div>
       )}
 
-      {/* Exercise panel (mode-dependent) */}
-      {mode === 'exercise' && (
-        <ExercisePanel
-          language={language}
-          onSubmitAnswer={handleExerciseSubmit}
-          onRequestNew={handleRequestNewExercise}
-          isLoading={isLoading || isExerciseLoading}
-          currentExercise={currentExercise}
-          error={exerciseError}
-          onDismissError={() => setExerciseError(null)}
-        />
-      )}
-
-      {/* Chat input (only in chat mode) */}
-      {mode === 'chat' && (
-        <div className="px-4 py-3 border-t border-border bg-card/70 backdrop-blur-sm">
-          <div className="flex gap-2.5 items-end max-w-3xl mx-auto">
-            <textarea
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (
-                  e.key === 'Enter' &&
-                  !e.shiftKey &&
-                  !e.nativeEvent.isComposing &&
-                  !(e.keyCode === 229)
-                ) {
-                  e.preventDefault()
-                  handleSend()
-                }
-              }}
-              placeholder={CHAT_PLACEHOLDERS[language]}
-              rows={1}
+      {/* Chat input — always visible */}
+      <div className="px-3 py-3 sm:px-4 border-t border-border bg-card/70 backdrop-blur-sm shrink-0">
+        <div className="flex flex-col gap-2 max-w-3xl mx-auto sm:flex-row sm:items-end sm:gap-2.5">
+          <div className="order-2 flex gap-2 sm:order-none sm:contents">
+            {/* These actions use their own row on phones so the editor retains useful width. */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowMistakes((o) => !o)}
               disabled={isLoading}
-              aria-label="Message input"
-              className="flex-1 resize-none rounded-2xl border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all leading-relaxed min-h-11 max-h-32 disabled:opacity-50 shadow-xs"
-              style={{ overflowY: 'hidden' }}
-            />
+              className="h-9 flex-1 rounded-xl shadow-xs sm:h-11 sm:w-11 sm:flex-none sm:rounded-2xl sm:p-0"
+              aria-label={showMistakes ? "Close mistakes panel" : "Review mistakes"}
+              title={showMistakes ? "Close mistakes" : "Review mistakes"}
+            >
+              <AlertTriangle className={`size-4 ${showMistakes ? 'text-amber-500' : ''}`} aria-hidden="true" />
+              <span className="sm:hidden">Mistakes</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsExerciseDrawerOpen(true)}
+              disabled={isLoading || isExerciseLoading}
+              className="h-9 flex-1 rounded-xl shadow-xs sm:h-11 sm:w-11 sm:flex-none sm:rounded-2xl sm:p-0"
+              aria-label={currentExercise ? "Resume exercise" : "Start a new exercise"}
+              title={currentExercise ? "Resume exercise" : "New exercise"}
+            >
+              {isExerciseLoading ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <BookOpen className="size-4" aria-hidden="true" />
+              )}
+              <span className="sm:hidden">{currentExercise ? "Resume exercise" : "Exercise"}</span>
+            </Button>
+          </div>
+
+          <div className="order-1 flex flex-1 min-w-0 items-end gap-2 sm:order-none sm:gap-2.5">
+            <div className="flex-1 min-w-0" ref={editorWrapRef}>
+              <div className="md-editor-wrap rounded-2xl border border-input overflow-hidden focus-within:ring-2 focus-within:ring-ring transition-all shadow-xs">
+                {editorReady ? (
+                  <MarkdownEditor value={inputValue} disabled={isLoading} placeholder={CHAT_PLACEHOLDERS[language]} onChange={handleEditorChange} />
+                ) : (
+                  <button type="button" onClick={() => setEditorReady(true)} onFocus={() => setEditorReady(true)} className="h-24 w-full px-3 text-left text-sm text-muted-foreground sm:h-32" aria-label="Open message editor">
+                    {CHAT_PLACEHOLDERS[language]}
+                  </button>
+                )}
+              </div>
+            </div>
             <Button
               size="sm"
               onClick={handleSend}
@@ -642,13 +322,33 @@ export function ChatScreen({
               <Send className="size-4" aria-hidden="true" />
             </Button>
           </div>
-          <p className="text-center text-[11px] text-muted-foreground mt-2">
-            Press <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Enter</kbd> to send
-            {' '}·{' '}
-            <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Shift+Enter</kbd> for new line
-          </p>
         </div>
-      )}
+        <p className="mt-2 text-center text-[11px] text-muted-foreground">
+          <span className="sm:hidden">Markdown supported · </span>
+          <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">⌘/Ctrl+Enter</kbd> to send
+          <span className="hidden sm:inline">
+            {" "}·{" "}
+            <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Enter</kbd> for new line
+            {" "}· Markdown supported
+          </span>
+        </p>
+      </div>
+      {/* Exercise drawer overlay — must be outside the flex column to avoid
+          disrupting the main content layout and scroll behavior */}
+      <ExercisePanel
+        language={language}
+        onSubmitAnswer={handleExerciseSubmit}
+        onRequestNew={handleRequestNewExercise}
+        onRequestHint={handleRequestHint}
+        practiceType={practiceType}
+        onPracticeTypeChange={setPracticeType}
+        isLoading={isLoading || isExerciseLoading}
+        currentExercise={currentExercise}
+        error={exerciseError}
+        onDismissError={() => setExerciseError(null)}
+        isOpen={isExerciseDrawerOpen}
+        onClose={() => setIsExerciseDrawerOpen(false)}
+      />
     </div>
-  )
+  );
 }

@@ -1,10 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { MessageCircle, Pencil, Trash2, Check, Loader2 } from 'lucide-react'
+import { MessageCircle, Pencil, Trash2, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { deleteSession, renameSession } from '@/lib/api'
-import { toast } from '@/lib/toast'
 import type { Session } from '@/lib/types'
 import { LEVEL_LABEL } from '@/lib/types'
 
@@ -12,8 +10,6 @@ interface SessionItemProps {
   session: Session
   isActive: boolean
   onSelect: (id: string) => void
-  onSessionsChanged?: () => void
-  onActiveSessionDeleted?: () => void
   onRename?: (sessionId: string, newTitle: string) => void
   onDelete?: (sessionId: string, wasActive: boolean) => void
   disabled?: boolean
@@ -23,8 +19,6 @@ export function SessionItem({
   session,
   isActive,
   onSelect,
-  onSessionsChanged,
-  onActiveSessionDeleted,
   onRename,
   onDelete,
   disabled,
@@ -32,89 +26,63 @@ export function SessionItem({
   const [editing, setEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [saving, setSaving] = useState(false)
 
-  const handleRename = async () => {
+  const handleRename = () => {
     if (!editTitle.trim() || !session.session_id) return
-    if (onRename) {
-      // Optimistic rename — parent updates state immediately (Issue #46)
-      onRename(session.session_id, editTitle.trim())
-      setEditing(false)
-    } else {
-      // Fallback: direct API call
-      setSaving(true)
-      const ok = await renameSession(session.session_id, editTitle.trim())
-      setSaving(false)
-      if (!ok) {
-        toast.error("Couldn't rename the conversation. Please try again.")
-        return
-      }
-      setEditing(false)
-      onSessionsChanged?.()
-    }
+    onRename?.(session.session_id, editTitle.trim())
+    setEditing(false)
   }
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!session.session_id) return
-    if (onDelete) {
-      // Optimistic delete — parent removes from state immediately (Issue #46)
-      onDelete(session.session_id, isActive)
-      setConfirmDelete(false)
-    } else {
-      // Fallback: direct API call
-      setSaving(true)
-      const ok = await deleteSession(session.session_id)
-      setSaving(false)
-      if (!ok) {
-        toast.error("Couldn't delete the conversation. Please try again.")
-        return
-      }
-      setConfirmDelete(false)
-      if (isActive) {
-        onActiveSessionDeleted?.()
-      } else {
-        onSessionsChanged?.()
-      }
-    }
+    onDelete?.(session.session_id, isActive)
+    setConfirmDelete(false)
   }
 
   if (confirmDelete) {
     return (
-      <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-destructive/5 text-xs">
-        {saving ? (
-          <Loader2 className="size-3 animate-spin shrink-0 text-destructive" />
-        ) : (
-          <>
-            <span className="flex-1 text-destructive">Delete?</span>
-            <button type="button" onClick={handleDelete} className="px-1.5 py-0.5 rounded text-destructive hover:bg-destructive/10">Yes</button>
-            <button type="button" onClick={() => setConfirmDelete(false)} className="px-1.5 py-0.5 rounded text-muted-foreground hover:bg-accent">No</button>
-          </>
-        )}
+      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 text-xs text-destructive">
+        <span className="flex-1 font-medium truncate">Delete?</span>
+        <button
+          type="button"
+          onClick={handleDelete}
+          className="px-1.5 py-0.5 rounded font-medium text-destructive hover:bg-destructive/15 transition-colors"
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirmDelete(false)}
+          className="px-1.5 py-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          No
+        </button>
       </div>
     )
   }
 
   if (editing) {
     return (
-      <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg">
-        <MessageCircle className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        {saving ? (
-          <Loader2 className="size-3 animate-spin shrink-0 text-primary" />
-        ) : (
-          <>
-            <input
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditing(false) }}
-              disabled={saving}
-              className="flex-1 min-w-0 bg-transparent border-b border-primary text-xs outline-none disabled:opacity-50"
-              autoFocus
-            />
-            <button type="button" onClick={handleRename} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground">
-              <Check className="size-3" />
-            </button>
-          </>
-        )}
+      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/40 border border-primary/30">
+        <MessageCircle className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+        <input
+          value={editTitle}
+          onChange={(e) => setEditTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleRename()
+            if (e.key === 'Escape') setEditing(false)
+          }}
+          className="flex-1 min-w-0 bg-transparent border-b border-primary text-xs outline-none text-foreground"
+          autoFocus
+        />
+        <button
+          type="button"
+          onClick={handleRename}
+          className="p-1 rounded-md text-primary hover:bg-primary/15 transition-colors"
+          aria-label="Confirm rename"
+        >
+          <Check className="size-3.5" />
+        </button>
       </div>
     )
   }
@@ -132,24 +100,55 @@ export function SessionItem({
       >
         <MessageCircle className="size-3.5 shrink-0" aria-hidden="true" />
         <span className="truncate">{session.title || LEVEL_LABEL[session.level]}</span>
+        {session.mistake_count ? (
+          <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 leading-none">
+            {session.mistake_count}
+          </span>
+        ) : null}
       </button>
       {session.session_id && (
-        <span className="flex items-center gap-0.5 shrink-0 ml-auto lg:opacity-0 lg:group-hover:opacity-100 lg:transition-opacity">
+        <span
+          className={cn(
+            'flex items-center gap-0.5 shrink-0 ml-auto transition-opacity',
+            isActive
+              ? 'opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+          )}
+        >
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); setEditTitle(session.title || ''); setEditing(true) }}
-            className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation()
+              setEditTitle(session.title || '')
+              setEditing(true)
+            }}
+            className={cn(
+              'p-1 rounded-md transition-colors',
+              isActive
+                ? 'text-primary hover:text-primary hover:bg-primary/20'
+                : 'text-foreground/70 hover:text-primary hover:bg-accent',
+            )}
             aria-label="Rename session"
+            title="Rename session"
           >
-            <Pencil className="size-3" />
+            <Pencil className="size-3.5" />
           </button>
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); setConfirmDelete(true) }}
-            className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation()
+              setConfirmDelete(true)
+            }}
+            className={cn(
+              'p-1 rounded-md transition-colors',
+              isActive
+                ? 'text-primary/80 hover:text-destructive hover:bg-destructive/10'
+                : 'text-foreground/70 hover:text-destructive hover:bg-destructive/10',
+            )}
             aria-label="Delete session"
+            title="Delete session"
           >
-            <Trash2 className="size-3" />
+            <Trash2 className="size-3.5" />
           </button>
         </span>
       )}
