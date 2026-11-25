@@ -16,7 +16,7 @@
     "@vercel/analytics": "1.6.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "jose": "^6.2.3",
+    "jose": "^6.2.18",
     "lucide-react": "^1.16.0",
     "next": "16.4.6",
     "next-auth": "5.0.0-beta.32",
