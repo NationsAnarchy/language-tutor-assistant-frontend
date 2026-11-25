@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner";
 import {
   clearSessionCaches,
 } from "@/lib/api";
+import { removeStoredItem } from "@/lib/browser-storage";
 import { audioManager } from "@/lib/audio-manager";
 import { useChatSessionNavigation } from "@/lib/hooks/use-chat-session-navigation";
 import { useChatSessionLoader } from "@/lib/hooks/use-chat-session-loader";
@@ -104,8 +105,12 @@ function ChatPageInner() {
   };
 
   const handleSignOut = () => {
-    // Stop any playing audio before signing out (Issue #42)
+    // Stop any playing audio and clear client-side session caches before signing out
     audioManager.stopAll();
+    clearSessionCaches();
+    if (typeof window !== "undefined") {
+      removeStoredItem(window.localStorage, "linguaai_active_session");
+    }
     signOut({ callbackUrl: "/login" });
   };
 

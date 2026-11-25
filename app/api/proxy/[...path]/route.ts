@@ -21,6 +21,7 @@ const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_U
  *  Streaming (SSE) responses are exempt entirely: /chat can stay open for the
  *  whole LLM turn. */
 const BACKEND_TIMEOUT_MS = 120_000
+const MAX_PROXY_BODY_BYTES = 64 * 1024
 
 /** Proxy a request to the backend, preserving the response body type. */
 async function proxyRequest(
@@ -104,6 +105,8 @@ async function proxyRequest(
       name: session.user.name || '',
     })
       .setProtectedHeader({ alg: 'HS256' })
+      .setIssuer('linguaai-frontend')
+      .setAudience('linguaai-backend')
       .setIssuedAt()
       .setExpirationTime('1h')
       .sign(secret)
@@ -141,6 +144,7 @@ async function proxyRequest(
       const headersInit: Record<string, string> = {
         'content-type': responseType,
         'cache-control': 'private, no-cache',
+        'x-content-type-options': 'nosniff',
         'x-request-id': responseRequestId,
       }
       const contentLength = res.headers.get('content-length')
@@ -157,7 +161,7 @@ async function proxyRequest(
     }
 
     // SSE streaming responses — passthrough the raw stream without buffering
-    if (streaming && res.body) {
+    if (streaming && res.ok && res.body) {
       return new NextResponse(res.body, {
         status: res.status,
         statusText: res.statusText,
@@ -212,11 +216,30 @@ export async function GET(
   return proxyRequest(request, await resolvePath(params), 'GET')
 }
 
+async function readBoundedBody(request: NextRequest): Promise<string | NextResponse> {
+  const contentLength = Number(request.headers.get('content-length') || '0')
+  if (Number.isFinite(contentLength) && contentLength > MAX_PROXY_BODY_BYTES) {
+    return NextResponse.json(
+      { detail: 'Request body too large', code: 'payload_too_large' },
+      { status: 413 },
+    )
+  }
+  const body = await request.text()
+  if (Buffer.byteLength(body, 'utf8') > MAX_PROXY_BODY_BYTES) {
+    return NextResponse.json(
+      { detail: 'Request body too large', code: 'payload_too_large' },
+      { status: 413 },
+    )
+  }
+  return body
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
-  const body = await request.text()
+  const body = await readBoundedBody(request)
+  if (body instanceof NextResponse) return body
   return proxyRequest(request, await resolvePath(params), 'POST', body)
 }
 
@@ -224,7 +247,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
-  const body = await request.text()
+  const body = await readBoundedBody(request)
+  if (body instanceof NextResponse) return body
   return proxyRequest(request, await resolvePath(params), 'PATCH', body)
 }
 

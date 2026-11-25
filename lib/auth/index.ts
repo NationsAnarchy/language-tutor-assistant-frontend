@@ -11,8 +11,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ],
   callbacks: {
     jwt({ token, account, profile }) {
-      // Attach the user's email as sub for backend compatibility
-      if (profile?.email) {
+      // Attach the user's email as sub for backend compatibility (only if verified)
+      const emailVerified = (profile as { email_verified?: boolean } | undefined)?.email_verified
+      if (profile?.email && emailVerified !== false) {
         // Always use email as the stable user identifier across sign-ins
         // Provider sub may change per session; email is permanent
         token.sub = profile.email

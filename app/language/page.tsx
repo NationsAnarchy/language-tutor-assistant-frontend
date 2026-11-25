@@ -6,10 +6,12 @@ import { useRouter } from 'next/navigation'
 import { LanguagePicker } from '@/components/language/language-picker'
 import { Spinner } from '@/components/ui/spinner'
 import {
+  clearSessionCaches,
   createSession,
   listSessions,
   mapBackendSession,
 } from '@/lib/api'
+import { removeStoredItem } from '@/lib/browser-storage'
 import type { Language, Level, Session } from '@/lib/types'
 
 export default function LanguagePage() {
@@ -68,6 +70,10 @@ export default function LanguagePage() {
 
   const handleSignOut = () => {
     setExistingSessions([])
+    clearSessionCaches()
+    if (typeof window !== 'undefined') {
+      removeStoredItem(window.localStorage, 'linguaai_active_session')
+    }
     signOut({ callbackUrl: '/login' })
   }
 
