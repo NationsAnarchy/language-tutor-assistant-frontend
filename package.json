@@ -11,7 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@base-ui/react": "^1.5.0",
+    "@base-ui/react": "^1.9.0",
     "@uiw/react-md-editor": "^4.1.1",
     "@vercel/analytics": "1.6.1",
     "class-variance-authority": "^0.7.1",
